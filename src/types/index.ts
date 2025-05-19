@@ -1,3 +1,4 @@
+
 import type { Timestamp } from 'firebase/firestore';
 
 export interface UserProfile {
@@ -6,6 +7,8 @@ export interface UserProfile {
   displayName: string | null;
   role: 'lawyer' | 'client';
   createdAt: Timestamp;
+  photoURL?: string;
+  phoneNumber?: string;
 }
 
 export interface CaseDocument {

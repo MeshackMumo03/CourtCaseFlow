@@ -1,8 +1,9 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createUserWithEmailAndPassword, updateProfile as updateFirebaseProfile } from "firebase/auth";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, Phone } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -26,11 +27,15 @@ import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase"; // Client-side auth
 import { useAuth } from "@/hooks/use-auth";
 
+const phoneRegex = new RegExp(
+  /^([+]?[\s0-9]+)?(\d{3}|[(]?[0-9]+[)])?([-]?[\s]?[0-9])+$/
+);
 
 const formSchema = z.object({
   displayName: z.string().min(2, { message: "Display name must be at least 2 characters." }),
   email: z.string().email({ message: "Invalid email address." }),
   password: z.string().min(6, { message: "Password must be at least 6 characters." }),
+  phoneNumber: z.string().regex(phoneRegex, 'Invalid phone number').min(10, {message: "Phone number must be at least 10 digits."}).optional().or(z.literal('')),
   role: z.enum(["lawyer", "client"], { required_error: "You need to select a role." }),
 });
 
@@ -39,7 +44,7 @@ export function SignupForm() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const { setUserProfile } = useAuth(); // To update profile in context after signup
+  const { setUserProfile } = useAuth();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -47,6 +52,7 @@ export function SignupForm() {
       displayName: "",
       email: "",
       password: "",
+      phoneNumber: "",
       role: "client",
     },
   });
@@ -54,37 +60,32 @@ export function SignupForm() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setLoading(true);
     try {
-      // 1. Create user in Firebase Auth (client-side)
       const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
       const firebaseUser = userCredential.user;
 
-      // 2. Update Firebase Auth profile (client-side)
       await updateFirebaseProfile(firebaseUser, { displayName: values.displayName });
       
-      // 3. Create user profile in Firestore (server action)
       const profileResult = await createUserProfileInFirestore(
         firebaseUser.uid,
         values.email,
         values.displayName,
-        values.role
+        values.role,
+        values.phoneNumber || undefined
       );
 
       if (profileResult.success) {
-        // Update local auth context if needed, though onAuthStateChanged should also pick it up
-        // For immediate UI update:
         setUserProfile({ 
           uid: firebaseUser.uid, 
           email: values.email, 
           displayName: values.displayName, 
           role: values.role,
-          createdAt: new Date() as any // Temp, Firestore timestamp will be source of truth
+          phoneNumber: values.phoneNumber || undefined,
+          createdAt: new Date() as any 
         });
 
         toast({ title: "Signup Successful", description: "Account created. Redirecting..." });
         router.push("/dashboard");
       } else {
-        // If Firestore profile creation failed, ideally roll back Firebase Auth user creation
-        // This is complex and usually requires Admin SDK. For now, show error.
         console.error("Firestore profile creation failed:", profileResult.message);
         toast({
           variant: "destructive",
@@ -138,6 +139,22 @@ export function SignupForm() {
                   <FormLabel>Email</FormLabel>
                   <FormControl>
                     <Input placeholder="name@example.com" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="phoneNumber"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Phone Number (Optional)</FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                        <Input type="tel" placeholder="e.g., +1 555 123 4567" {...field} />
+                        <Phone className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    </div>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
