@@ -1,3 +1,4 @@
+
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -30,9 +31,10 @@ import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { createCaseAction } from '@/actions/cases'; // Assuming this action exists
+import { createCaseAction, updateCaseAction } from '@/actions/cases'; 
 import type { CaseFile } from '@/types';
 import { useAuth } from '@/hooks/use-auth';
+import { Timestamp } from 'firebase/firestore';
 
 
 const caseFormSchema = z.object({
@@ -63,7 +65,7 @@ export function CaseForm({ initialData, caseId }: CaseFormProps) {
     defaultValues: initialData
       ? {
           ...initialData,
-          hearingDate: initialData.hearingDate?.toDate(), // Convert Firestore Timestamp to Date
+          hearingDate: initialData.hearingDate instanceof Timestamp ? initialData.hearingDate.toDate() : initialData.hearingDate ? new Date(initialData.hearingDate as any) : null,
         }
       : {
           caseNumber: '',
@@ -95,22 +97,32 @@ export function CaseForm({ initialData, caseId }: CaseFormProps) {
       });
       formData.append('lawyerUid', userProfile.uid);
       
+      let result;
       if (caseId) {
         formData.append('caseId', caseId);
-        // Call update action: await updateCaseAction(formData);
-        toast({ title: 'Case Updated', description: 'Case details have been successfully updated.' });
+        result = await updateCaseAction(formData);
+        if (result.success) {
+          toast({ title: 'Case Updated', description: 'Case details have been successfully updated.' });
+          router.push(result.caseId ? `/cases/${result.caseId}` : '/dashboard');
+        } else {
+          throw new Error(result.message || 'Failed to update case.');
+        }
       } else {
-        await createCaseAction(formData);
-        toast({ title: 'Case Created', description: 'New case has been successfully created.' });
+        result = await createCaseAction(formData);
+        if (result.success) {
+          toast({ title: 'Case Created', description: 'New case has been successfully created.' });
+          router.push(result.caseId ? `/cases/${result.caseId}` : '/dashboard');
+        } else {
+          throw new Error(result.message || 'Failed to create case.');
+        }
       }
-      router.push('/dashboard'); // Or to the case detail page
       router.refresh(); // Refresh server components
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to save case:', error);
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: 'Failed to save case. Please try again.',
+        description: error.message || 'Failed to save case. Please try again.',
       });
     } finally {
       setIsLoading(false);
