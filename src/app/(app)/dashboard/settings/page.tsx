@@ -2,7 +2,7 @@
 'use client';
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -25,6 +25,17 @@ export default function SettingsPage() {
       router.replace('/login');
     }
     // Load user preferences from backend or local storage if available
+    // For dark mode, check initial preference
+    if (typeof window !== 'undefined') {
+        const isDark = localStorage.getItem('theme') === 'dark' || 
+                       (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        setDarkMode(isDark);
+        if (isDark) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    }
   }, [userProfile, authLoading, router]);
 
   if (authLoading || !userProfile) {
@@ -34,6 +45,17 @@ export default function SettingsPage() {
       </div>
     );
   }
+
+  const handleDarkModeChange = (checked: boolean) => {
+    setDarkMode(checked);
+    if (checked) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -79,15 +101,7 @@ export default function SettingsPage() {
             <Switch
               id="dark-mode"
               checked={darkMode}
-              onCheckedChange={(checked) => {
-                setDarkMode(checked);
-                // Implement theme switching logic here
-                if (checked) {
-                  document.documentElement.classList.add('dark');
-                } else {
-                  document.documentElement.classList.remove('dark');
-                }
-              }}
+              onCheckedChange={handleDarkModeChange}
               aria-label="Toggle dark mode"
             />
           </div>
