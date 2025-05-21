@@ -4,7 +4,7 @@
 import { Timestamp, doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { UserProfile } from '@/types';
-import type { PartialDeep } from 'type-fest'; // You might need to install this: npm install type-fest
+import type { PartialDeep } from 'type-fest'; 
 
 interface ActionResult {
   success: boolean;
@@ -28,7 +28,10 @@ export async function createUserProfileInFirestore(
       displayName,
       role,
       createdAt: serverTimestamp() as Timestamp,
-      phoneNumber: phoneNumber || undefined, // Store if provided
+      phoneNumber: phoneNumber || undefined,
+      // Initialize law firm fields for lawyers, optional for clients
+      lawFirmName: role === 'lawyer' ? '' : undefined,
+      lawFirmAddress: role === 'lawyer' ? '' : undefined,
     };
     await setDoc(userDocRef, userProfile);
 
@@ -41,7 +44,7 @@ export async function createUserProfileInFirestore(
 
 export async function updateUserProfileDetails(
   uid: string,
-  details: PartialDeep<Omit<UserProfile, 'uid' | 'role' | 'createdAt'>> // Allow partial updates for specific fields
+  details: PartialDeep<Omit<UserProfile, 'uid' | 'role' | 'createdAt'>> 
 ): Promise<ActionResult> {
   if (!uid) {
     return { success: false, message: 'User ID is required.' };
@@ -53,8 +56,6 @@ export async function updateUserProfileDetails(
   try {
     const userDocRef = doc(db, 'users', uid);
     
-    // Prepare data for Firestore, ensuring serverTimestamp for any date fields if necessary
-    // For now, we are updating simple string fields like displayName, phoneNumber, photoURL
     const updateData: Record<string, any> = { ...details };
 
     // Filter out undefined values to prevent overwriting fields with undefined
@@ -66,12 +67,14 @@ export async function updateUserProfileDetails(
     
     await updateDoc(userDocRef, updateData);
 
-    // Construct a partial profile to return for optimistic updates if needed
+    // Construct a partial profile to return for optimistic updates
     const updatedProfileFields: Partial<UserProfile> = {};
     if (details.displayName !== undefined) updatedProfileFields.displayName = details.displayName;
     if (details.phoneNumber !== undefined) updatedProfileFields.phoneNumber = details.phoneNumber;
     if (details.photoURL !== undefined) updatedProfileFields.photoURL = details.photoURL;
     if (details.email !== undefined) updatedProfileFields.email = details.email;
+    if (details.lawFirmName !== undefined) updatedProfileFields.lawFirmName = details.lawFirmName;
+    if (details.lawFirmAddress !== undefined) updatedProfileFields.lawFirmAddress = details.lawFirmAddress;
 
 
     return { success: true, message: 'Profile updated successfully.', updatedProfile: updatedProfileFields };

@@ -8,15 +8,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, UserCircle, Edit3, Save, Upload, Mail, Phone } from 'lucide-react';
+import { Loader2, UserCircle, Edit3, Save, Upload, Mail, Phone, Building, MapPin } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef, ChangeEvent } from 'react';
 import { updateUserProfileDetails } from '@/actions/auth';
 import { useToast } from '@/hooks/use-toast';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { updateProfile as updateFirebaseProfile, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
-import { auth, storage, db } from '@/lib/firebase'; // Ensure storage is exported from firebase
+import { auth, storage, db } from '@/lib/firebase'; 
 import type { UserProfile } from '@/types';
+import { Textarea } from '@/components/ui/textarea';
 
 const phoneRegex = new RegExp(
   /^([+]?[\s0-9]+)?(\d{3}|[(]?[0-9]+[)])?([-]?[\s]?[0-9])+$/
@@ -29,6 +30,8 @@ export default function ProfilePage() {
 
   const [displayName, setDisplayName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [lawFirmName, setLawFirmName] = useState('');
+  const [lawFirmAddress, setLawFirmAddress] = useState('');
   const [profilePictureFile, setProfilePictureFile] = useState<File | null>(null);
   const [profilePicturePreview, setProfilePicturePreview] = useState<string | null>(null);
   
@@ -44,6 +47,8 @@ export default function ProfilePage() {
     if (userProfile) {
       setDisplayName(userProfile.displayName || '');
       setPhoneNumber(userProfile.phoneNumber || '');
+      setLawFirmName(userProfile.lawFirmName || '');
+      setLawFirmAddress(userProfile.lawFirmAddress || '');
       setProfilePicturePreview(userProfile.photoURL || null);
     }
   }, [userProfile, authLoading, router]);
@@ -72,10 +77,9 @@ export default function ProfilePage() {
   const handleSaveProfile = async () => {
     if (!user || !userProfile) return;
 
-    let newPhotoURL = userProfile.photoURL; // Keep existing if not changed
+    let newPhotoURL = userProfile.photoURL; 
     const detailsToUpdate: Partial<UserProfile> = {};
 
-    // Validate phone number if changed
     if (phoneNumber !== (userProfile.phoneNumber || '')) {
         if (phoneNumber && !phoneRegex.test(phoneNumber)) {
             toast({ variant: 'destructive', title: 'Invalid Phone Number', description: 'Please enter a valid phone number.'});
@@ -92,11 +96,18 @@ export default function ProfilePage() {
         detailsToUpdate.displayName = displayName;
     }
 
+    if (userProfile.role === 'lawyer') {
+      if (lawFirmName !== (userProfile.lawFirmName || '')) {
+        detailsToUpdate.lawFirmName = lawFirmName;
+      }
+      if (lawFirmAddress !== (userProfile.lawFirmAddress || '')) {
+        detailsToUpdate.lawFirmAddress = lawFirmAddress;
+      }
+    }
 
     setIsSaving(true);
 
     try {
-      // 1. Upload new profile picture if selected
       if (profilePictureFile) {
         const filePath = `profile-pictures/${user.uid}/${profilePictureFile.name}`;
         const fileStorageRef = storageRef(storage, filePath);
@@ -105,8 +116,6 @@ export default function ProfilePage() {
         detailsToUpdate.photoURL = newPhotoURL;
       }
 
-      // 2. Update Firebase Auth profile (displayName and photoURL)
-      // Only update if there's a change to avoid unnecessary calls
       const authProfileUpdates: { displayName?: string; photoURL?: string } = {};
       if (detailsToUpdate.displayName && detailsToUpdate.displayName !== user.displayName) {
         authProfileUpdates.displayName = detailsToUpdate.displayName;
@@ -119,7 +128,6 @@ export default function ProfilePage() {
         await updateFirebaseProfile(user, authProfileUpdates);
       }
       
-      // 3. Update Firestore profile (displayName, phoneNumber, photoURL)
       if (Object.keys(detailsToUpdate).length > 0) {
         const result = await updateUserProfileDetails(user.uid, detailsToUpdate);
         if (!result.success) {
@@ -127,17 +135,18 @@ export default function ProfilePage() {
         }
       }
 
-      // Optimistically update context and local state
       setUserProfile(prev => {
         if (!prev) return null;
         const updated = {...prev};
         if (detailsToUpdate.displayName !== undefined) updated.displayName = detailsToUpdate.displayName;
         if (detailsToUpdate.phoneNumber !== undefined) updated.phoneNumber = detailsToUpdate.phoneNumber;
         if (detailsToUpdate.photoURL !== undefined) updated.photoURL = detailsToUpdate.photoURL;
+        if (detailsToUpdate.lawFirmName !== undefined) updated.lawFirmName = detailsToUpdate.lawFirmName;
+        if (detailsToUpdate.lawFirmAddress !== undefined) updated.lawFirmAddress = detailsToUpdate.lawFirmAddress;
         return updated;
       });
       
-      setProfilePictureFile(null); // Clear selected file
+      setProfilePictureFile(null); 
       setIsEditing(false);
       toast({ title: 'Profile Updated', description: 'Your profile has been successfully updated.' });
 
@@ -203,7 +212,6 @@ export default function ProfilePage() {
               <Input id="email" type="email" value={userProfile.email || ''} readOnly disabled className="bg-muted/50 pl-10"/>
               <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             </div>
-            {/* TODO: Add email editing functionality with re-authentication */}
           </div>
           
           <div className="space-y-2">
@@ -238,6 +246,47 @@ export default function ProfilePage() {
             </div>
           </div>
 
+          {userProfile.role === 'lawyer' && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="lawFirmName">Law Firm Name</Label>
+                <div className="relative">
+                  {isEditing ? (
+                    <Input
+                      id="lawFirmName"
+                      placeholder="e.g., Acme Law Group"
+                      value={lawFirmName}
+                      onChange={(e) => setLawFirmName(e.target.value)}
+                      className="pl-10"
+                    />
+                  ) : (
+                    <Input id="lawFirmName" value={userProfile.lawFirmName || 'Not provided'} readOnly disabled className="bg-muted/50 pl-10"/>
+                  )}
+                  <Building className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="lawFirmAddress">Law Firm Address</Label>
+                <div className="relative">
+                {isEditing ? (
+                  <Textarea
+                    id="lawFirmAddress"
+                    placeholder="e.g., 123 Main St, Anytown, USA"
+                    value={lawFirmAddress}
+                    onChange={(e) => setLawFirmAddress(e.target.value)}
+                    className="pl-10"
+                    rows={3}
+                  />
+                ) : (
+                  <Textarea id="lawFirmAddress" value={userProfile.lawFirmAddress || 'Not provided'} readOnly disabled className="bg-muted/50 pl-10" rows={3}/>
+                )}
+                <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                </div>
+              </div>
+            </>
+          )}
+
           <Separator />
 
           <div className="space-y-2">
@@ -254,6 +303,8 @@ export default function ProfilePage() {
                   setIsEditing(false); 
                   setDisplayName(userProfile.displayName || '');
                   setPhoneNumber(userProfile.phoneNumber || '');
+                  setLawFirmName(userProfile.lawFirmName || '');
+                  setLawFirmAddress(userProfile.lawFirmAddress || '');
                   setProfilePictureFile(null);
                   setProfilePicturePreview(userProfile.photoURL || null);
                 }} disabled={isSaving}>
@@ -272,7 +323,6 @@ export default function ProfilePage() {
         </CardFooter>
       </Card>
 
-      {/* Placeholder for Email Editing - requires re-authentication */}
       {isEditing && (
          <Card className="max-w-2xl mx-auto mt-6">
             <CardHeader>

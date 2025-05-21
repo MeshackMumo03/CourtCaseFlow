@@ -9,6 +9,8 @@ export interface UserProfile {
   createdAt: Timestamp;
   photoURL?: string;
   phoneNumber?: string;
+  lawFirmName?: string;
+  lawFirmAddress?: string;
 }
 
 export interface CaseDocument {
