@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, SettingsIcon, Bell, Palette, ShieldAlert, Trash2 } from "lucide-react";
+import { Loader2, SettingsIcon, Bell, Palette, ShieldAlert, Trash2, Briefcase, CalendarClock } from "lucide-react";
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -30,7 +30,10 @@ export default function SettingsPage() {
   const router = useRouter();
   const { toast } = useToast();
   
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(true);
+  const [hearingRemindersEnabled, setHearingRemindersEnabled] = useState(true);
+  const [caseUpdatesEnabled, setCaseUpdatesEnabled] = useState(true);
+
   const [darkMode, setDarkMode] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
@@ -39,11 +42,12 @@ export default function SettingsPage() {
     if (!authLoading && !userProfile) {
       router.replace('/login');
     }
+    // Load existing settings from localStorage or userProfile if they were ever saved
+    // For now, just setting dark mode based on system/localStorage preference
     if (typeof window !== 'undefined') {
         const isDark = localStorage.getItem('theme') === 'dark' || 
                        (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches);
         setDarkMode(isDark);
-        // document.documentElement.classList.toggle('dark', isDark); // Applied in RootLayout or via theme provider
     }
   }, [userProfile, authLoading, router]);
 
@@ -98,17 +102,52 @@ export default function SettingsPage() {
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between rounded-lg border p-4">
             <div>
-              <Label htmlFor="email-notifications" className="font-medium">Email Notifications</Label>
-              <p className="text-sm text-muted-foreground">Receive updates about your cases and account activity.</p>
+              <Label htmlFor="email-notifications" className="font-medium">Master Email Notifications</Label>
+              <p className="text-sm text-muted-foreground">Receive general updates and account activity emails.</p>
             </div>
             <Switch
               id="email-notifications"
-              checked={notificationsEnabled}
-              onCheckedChange={setNotificationsEnabled}
+              checked={emailNotificationsEnabled}
+              onCheckedChange={setEmailNotificationsEnabled}
               aria-label="Toggle email notifications"
             />
           </div>
+          <div className="flex items-center justify-between rounded-lg border p-4">
+            <div>
+              <Label htmlFor="hearing-reminders" className="font-medium flex items-center gap-1">
+                <CalendarClock className="h-4 w-4 text-muted-foreground"/> Hearing Reminders
+              </Label>
+              <p className="text-sm text-muted-foreground">Get email notifications for upcoming court dates.</p>
+            </div>
+            <Switch
+              id="hearing-reminders"
+              checked={hearingRemindersEnabled}
+              onCheckedChange={setHearingRemindersEnabled}
+              aria-label="Toggle hearing reminder notifications"
+              disabled={!emailNotificationsEnabled} 
+            />
+          </div>
+          <div className="flex items-center justify-between rounded-lg border p-4">
+            <div>
+              <Label htmlFor="case-updates" className="font-medium flex items-center gap-1">
+                <Briefcase className="h-4 w-4 text-muted-foreground"/> Case Updates
+              </Label>
+              <p className="text-sm text-muted-foreground">Receive notifications about significant updates to your cases.</p>
+            </div>
+            <Switch
+              id="case-updates"
+              checked={caseUpdatesEnabled}
+              onCheckedChange={setCaseUpdatesEnabled}
+              aria-label="Toggle case update notifications"
+              disabled={!emailNotificationsEnabled}
+            />
+          </div>
         </CardContent>
+         <CardFooter>
+          <p className="text-xs text-muted-foreground">
+            Notification preferences are UI only for now and not saved.
+          </p>
+        </CardFooter>
       </Card>
 
       <Card>
