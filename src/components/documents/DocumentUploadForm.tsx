@@ -1,3 +1,4 @@
+
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -53,9 +54,13 @@ export function DocumentUploadForm({ caseId, onClose, onDocumentUploaded }: Docu
 
   const form = useForm<z.infer<typeof uploadFormSchema>>({
     resolver: zodResolver(uploadFormSchema),
+    defaultValues: {
+      document: undefined, // react-hook-form handles file inputs; undefined is fine for reset
+      description: '', // Initialize description to an empty string
+    },
   });
 
-  const onSubmit = async (values: z.infer<typeof uploadFormSchema>) => {
+  const onSubmit = async (values: z.infer<typeof uploadFormSchema>>) => {
     setIsLoading(true);
     const file = values.document[0];
 
@@ -75,8 +80,12 @@ export function DocumentUploadForm({ caseId, onClose, onDocumentUploaded }: Docu
           description: `${file.name} is ready for AI tag suggestions.`,
         });
         onDocumentUploaded(dataUri, file.name); // Pass data URI and name to parent
-        form.reset();
-        // onClose(); // Parent will close or show AI tagging tool
+        form.reset(); 
+        // The parent component (CaseDetailPage) is responsible for deciding whether to close 
+        // the modal or show the AiTaggingTool.
+        // If AiTaggingTool is shown within this dialog structure, onClose might not be called immediately.
+        // If onDocumentUploaded leads to unmounting or re-rendering that shows AiTaggingTool elsewhere,
+        // then onClose might be appropriate here or handled by the parent.
       };
       reader.onerror = () => {
         toast({ variant: 'destructive', title: 'Error', description: 'Failed to read file.' });
@@ -89,11 +98,16 @@ export function DocumentUploadForm({ caseId, onClose, onDocumentUploaded }: Docu
       toast({ variant: 'destructive', title: 'Upload Failed', description: 'Could not process the file.' });
       setIsLoading(false);
     }
-    // setLoading(false) is handled within reader.onloadend or reader.onerror
+    // setIsLoading(false) is handled within reader.onloadend or reader.onerror for async operations
   };
 
   return (
-    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={true} onOpenChange={(open) => {
+      if (!open) {
+        form.reset(); // Reset form when dialog is closed
+        onClose();
+      }
+    }}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Upload Document</DialogTitle>
@@ -135,7 +149,7 @@ export function DocumentUploadForm({ caseId, onClose, onDocumentUploaded }: Docu
               )}
             />
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={onClose} disabled={isLoading}>
+              <Button type="button" variant="outline" onClick={() => { form.reset(); onClose();}} disabled={isLoading}>
                 Cancel
               </Button>
               <Button type="submit" disabled={isLoading}>
