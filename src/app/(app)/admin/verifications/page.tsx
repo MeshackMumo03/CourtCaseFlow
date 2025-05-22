@@ -23,7 +23,7 @@ export default function AdminVerificationsPage() {
   const { toast } = useToast();
 
   const [pendingLawyers, setPendingLawyers] = useState<UserProfile[]>([]);
-  const [loadingData, setLoadingData] = useState(true); // Start true to trigger initial load
+  const [loadingData, setLoadingData] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<Record<string, boolean>>({});
 
@@ -56,8 +56,6 @@ export default function AdminVerificationsPage() {
 
   useEffect(() => {
     if (authLoading) {
-      // Auth is still loading, page should show main spinner or wait.
-      // setLoadingData is true by default or set by fetch.
       return;
     }
 
@@ -66,13 +64,13 @@ export default function AdminVerificationsPage() {
       return;
     }
 
+    // This is the primary check for admin privileges
     if (adminUserProfile.email !== ADMIN_EMAIL) {
-      setError('Access Denied: You do not have permission to view this page.');
-      setLoadingData(false);
+      setError(`Access Denied: User ${adminUserProfile.email} is not authorized for admin functions.`);
+      setLoadingData(false); // Stop loading if not admin
       return;
     }
     
-    // If user is admin and auth is complete, proceed to fetch data.
     fetchPendingVerifications();
 
   }, [adminUserProfile, authLoading, router, fetchPendingVerifications]);
@@ -89,7 +87,6 @@ export default function AdminVerificationsPage() {
 
     if (result.success) {
       toast({ title: 'Success', description: result.message });
-      // Re-fetch or update local state more intelligently
       setPendingLawyers(prevLawyers => 
         prevLawyers.map(lawyer => {
           if (lawyer.uid === userId) {
@@ -100,7 +97,7 @@ export default function AdminVerificationsPage() {
             };
           }
           return lawyer;
-        }).filter(lawyer => // Keep only those still needing review for *either* type
+        }).filter(lawyer => 
             (lawyer.lskVerificationStatus === 'pending_review' && lawyer.lskRegistrationNumber) || 
             (lawyer.lawFirmVerificationStatus === 'pending_review' && (lawyer.lawFirmName || lawyer.lawFirmAddress))
         )
@@ -112,7 +109,7 @@ export default function AdminVerificationsPage() {
   };
 
 
-  if (authLoading || loadingData) {
+  if (authLoading || (adminUserProfile?.email === ADMIN_EMAIL && loadingData)) {
     return (
       <div className="flex flex-1 items-center justify-center p-6">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -125,7 +122,7 @@ export default function AdminVerificationsPage() {
     return (
       <div className="flex flex-1 flex-col items-center justify-center text-center p-6">
         <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
-        <h2 className="text-2xl font-semibold mb-2">Error</h2>
+        <h2 className="text-2xl font-semibold mb-2">Access Error</h2>
         <p className="text-muted-foreground mb-6">{error}</p>
         <Button onClick={() => router.push('/dashboard')}>
           Go to Dashboard
@@ -134,12 +131,16 @@ export default function AdminVerificationsPage() {
     );
   }
   
-  if (adminUserProfile?.email !== ADMIN_EMAIL) { // Should be caught by error state, but good safety
+  // This check is redundant if the useEffect handles it, but serves as a final guard.
+  if (adminUserProfile?.email !== ADMIN_EMAIL) {
      return (
       <div className="flex flex-1 flex-col items-center justify-center text-center p-6">
         <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
         <h2 className="text-2xl font-semibold mb-2">Access Denied</h2>
-        <p className="text-muted-foreground mb-6">You do not have permission to view this page.</p>
+        <p className="text-muted-foreground mb-6">You do not have permission to view this page. Ensure you are logged in with the admin account ({ADMIN_EMAIL}).</p>
+         <Button onClick={() => router.push('/dashboard')}>
+          Go to Dashboard
+        </Button>
       </div>
     );
   }
@@ -150,14 +151,11 @@ export default function AdminVerificationsPage() {
         <h1 className="text-3xl font-bold tracking-tight">Admin Verifications</h1>
         <ShieldQuestion className="h-8 w-8 text-primary" />
       </div>
-      <div className="p-2 border-2 border-red-500 bg-red-100 text-red-700 text-center font-bold">
-        ADMIN VERIFICATIONS PAGE TOP - This message is for debugging layout.
-      </div>
-
+      
       <Card>
         <CardHeader>
           <CardTitle>Pending Lawyer Verifications</CardTitle>
-          <CardDescription>Review and approve or reject LSK and Law Firm details submitted by lawyers.</CardDescription>
+          <CardDescription>Review and approve or reject LSK and Law Firm details submitted by lawyers. Admin user: {adminUserProfile.email}</CardDescription>
         </CardHeader>
         <CardContent>
           {pendingLawyers.length === 0 ? (
