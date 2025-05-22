@@ -23,30 +23,37 @@ export default function AdminVerificationsPage() {
   const { toast } = useToast();
 
   const [pendingLawyers, setPendingLawyers] = useState<UserProfile[]>([]);
-  const [loadingData, setLoadingData] = useState(true);
+  const [loadingData, setLoadingData] = useState(true); // Start true to trigger initial load
   const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState<Record<string, boolean>>({}); // For individual button loading states
+  const [isSubmitting, setIsSubmitting] = useState<Record<string, boolean>>({});
 
 
   useEffect(() => {
-    if (authLoading) return;
+    if (authLoading) {
+      // Auth is still loading, page should show main spinner or wait.
+      // We ensure loadingData is true so the main spinner for the page shows.
+      if (!loadingData) setLoadingData(true); 
+      return;
+    }
 
     if (!adminUserProfile) {
       router.replace('/login');
       return;
     }
+
     if (adminUserProfile.email !== ADMIN_EMAIL) {
       setError('Access Denied: You do not have permission to view this page.');
       setLoadingData(false);
       return;
     }
 
+    // If user is admin and auth is complete, proceed to fetch data.
+    // This effect structure ensures data is fetched once admin identity is confirmed.
     const fetchPendingVerifications = async () => {
-      setLoadingData(true);
-      setError(null);
+      setLoadingData(true); // Explicitly set loading before fetch
+      setError(null); // Clear previous errors
       try {
         const usersRef = collection(db, 'users');
-        // Fetch all users who are lawyers
         const q = query(usersRef, where('role', '==', 'lawyer'));
         const querySnapshot = await getDocs(q);
         
@@ -55,7 +62,6 @@ export default function AdminVerificationsPage() {
           fetchedLawyers.push({ uid: doc.id, ...doc.data() } as UserProfile);
         });
         
-        // Filter for those with pending LSK or Law Firm verification
         const lawyersToVerify = fetchedLawyers.filter(lawyer => 
             lawyer.lskVerificationStatus === 'pending_review' || 
             lawyer.lawFirmVerificationStatus === 'pending_review'
@@ -71,7 +77,8 @@ export default function AdminVerificationsPage() {
     };
 
     fetchPendingVerifications();
-  }, [adminUserProfile, authLoading, router]);
+
+  }, [adminUserProfile, authLoading, router]); // Key dependencies for auth and routing
 
   const handleVerificationUpdate = async (
     userId: string, 
@@ -85,7 +92,6 @@ export default function AdminVerificationsPage() {
 
     if (result.success) {
       toast({ title: 'Success', description: result.message });
-      // Refresh data by refetching or updating local state
       setPendingLawyers(prevLawyers => 
         prevLawyers.map(lawyer => {
           if (lawyer.uid === userId) {
@@ -96,7 +102,7 @@ export default function AdminVerificationsPage() {
             };
           }
           return lawyer;
-        }).filter(lawyer => // Keep them in the list if another status is still pending
+        }).filter(lawyer => 
             lawyer.lskVerificationStatus === 'pending_review' || 
             lawyer.lawFirmVerificationStatus === 'pending_review'
         )
@@ -110,15 +116,16 @@ export default function AdminVerificationsPage() {
 
   if (authLoading || loadingData) {
     return (
-      <div className="flex flex-1 items-center justify-center">
+      <div className="flex flex-1 items-center justify-center p-6">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-2">Loading verification data...</span>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center text-center">
+      <div className="flex flex-1 flex-col items-center justify-center text-center p-6">
         <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
         <h2 className="text-2xl font-semibold mb-2">Error</h2>
         <p className="text-muted-foreground mb-6">{error}</p>
@@ -128,9 +135,20 @@ export default function AdminVerificationsPage() {
       </div>
     );
   }
+  
+  // This check should be redundant if error state above catches it, but good for safety
+  if (adminUserProfile?.email !== ADMIN_EMAIL) {
+     return (
+      <div className="flex flex-1 flex-col items-center justify-center text-center p-6">
+        <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
+        <h2 className="text-2xl font-semibold mb-2">Access Denied</h2>
+        <p className="text-muted-foreground mb-6">You do not have permission to view this page.</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">Admin Verifications</h1>
         <ShieldQuestion className="h-8 w-8 text-primary" />
@@ -145,7 +163,7 @@ export default function AdminVerificationsPage() {
           {pendingLawyers.length === 0 ? (
             <div className="text-center py-10">
               <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
-              <p className="text-muted-foreground">No pending verifications at the moment.</p>
+              <p className="text-muted-foreground">No pending verifications at the moment. All caught up!</p>
             </div>
           ) : (
             <Table>
@@ -167,14 +185,30 @@ export default function AdminVerificationsPage() {
                     <TableCell>{lawyer.email}</TableCell>
                     <TableCell>{lawyer.lskRegistrationNumber || 'N/A'}</TableCell>
                     <TableCell>
-                       <Badge variant={lawyer.lskVerificationStatus === 'pending_review' ? 'secondary' : 'default'} className="capitalize">
-                        {lawyer.lskVerificationStatus?.replace('_', ' ')}
+                       <Badge 
+                          variant={
+                            lawyer.lskVerificationStatus === 'pending_review' ? 'secondary' : 
+                            lawyer.lskVerificationStatus === 'verified' ? 'default' : // 'default' for primary/success like look
+                            lawyer.lskVerificationStatus === 'rejected' ? 'destructive' : 
+                            'outline' // Fallback for 'unverified' or undefined
+                          } 
+                          className="capitalize"
+                        >
+                        {lawyer.lskVerificationStatus?.replace('_', ' ') || 'Unverified'}
                       </Badge>
                     </TableCell>
                     <TableCell>{lawyer.lawFirmName || 'N/A'}</TableCell>
                      <TableCell>
-                       <Badge variant={lawyer.lawFirmVerificationStatus === 'pending_review' ? 'secondary' : 'default'} className="capitalize">
-                        {lawyer.lawFirmVerificationStatus?.replace('_', ' ')}
+                       <Badge 
+                          variant={
+                            lawyer.lawFirmVerificationStatus === 'pending_review' ? 'secondary' : 
+                            lawyer.lawFirmVerificationStatus === 'verified' ? 'default' :
+                            lawyer.lawFirmVerificationStatus === 'rejected' ? 'destructive' :
+                            'outline'
+                          } 
+                          className="capitalize"
+                        >
+                        {lawyer.lawFirmVerificationStatus?.replace('_', ' ') || 'Unverified'}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right space-y-1 md:space-y-0 md:space-x-1">
@@ -233,3 +267,4 @@ export default function AdminVerificationsPage() {
     </div>
   );
 }
+
