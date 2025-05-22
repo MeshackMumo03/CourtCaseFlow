@@ -54,18 +54,16 @@ export function DocumentUploadForm({ caseId, onClose, onDocumentUploaded }: Docu
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
-  const form = useForm<UploadFormValues>({ // Use the defined type here
+  const form = useForm<UploadFormValues>({
     resolver: zodResolver(uploadFormSchema),
     defaultValues: {
       document: undefined,
-      description: '',
+      description: '', // Ensure description is initialized to an empty string
     },
   });
 
-  // Corrected onSubmit function signature using the UploadFormValues type
   const onSubmit = async (values: UploadFormValues) => {
     setIsLoading(true);
-    // Ensure values.document is not null and has at least one file
     if (!values.document || values.document.length === 0) {
         toast({ variant: 'destructive', title: 'File Error', description: 'No file selected.' });
         setIsLoading(false);
@@ -90,7 +88,7 @@ export function DocumentUploadForm({ caseId, onClose, onDocumentUploaded }: Docu
           console.error('Error in reader.onloadend:', innerError);
           toast({ variant: 'destructive', title: 'Processing Error', description: 'Failed to process file data.' });
         } finally {
-          setIsLoading(false); // Ensure loading is stopped after onloadend processing
+          setIsLoading(false); 
         }
       };
 
@@ -127,7 +125,7 @@ export function DocumentUploadForm({ caseId, onClose, onDocumentUploaded }: Docu
             <FormField
               control={form.control}
               name="document"
-              render={({ field: { onChange, ...rest } }) => (
+              render={({ field: { onChange, value, ...rest } }) => ( // Exclude value from field for file input
                 <FormItem>
                   <FormLabel>Document File</FormLabel>
                   <FormControl>
@@ -151,7 +149,11 @@ export function DocumentUploadForm({ caseId, onClose, onDocumentUploaded }: Docu
                 <FormItem>
                   <FormLabel>Document Description (Optional)</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g., 'Evidence photo from scene'" {...field} />
+                    <Input 
+                        placeholder="e.g., 'Evidence photo from scene'" 
+                        {...field}
+                        value={field.value || ''} // Explicitly handle undefined
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
