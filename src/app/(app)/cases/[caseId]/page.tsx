@@ -10,7 +10,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertTriangle, ArrowLeft, Edit3, FilePlus, Loader2, Tags, UploadCloud, User, Mail, Phone, Building, MapPin } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Edit3, FilePlus, Loader2, Tags, UploadCloud, User, Mail, Phone, Building, MapPin, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 import { DocumentUploadForm } from '@/components/documents/DocumentUploadForm';
 import { AiTaggingTool } from '@/components/documents/AiTaggingTool';
@@ -60,7 +60,6 @@ export default function CaseDetailPage() {
           if (userProfile.role === 'lawyer' && data.lawyerUid === userProfile.uid) {
             canViewCase = true;
           } else if (userProfile.role === 'client' && data.clientEmail === userProfile.email) { 
-            // Basic check, ideally clientUid would be on caseFile and match userProfile.uid
             canViewCase = true;
           }
 
@@ -68,15 +67,13 @@ export default function CaseDetailPage() {
             const fetchedCaseFile = { id: caseDocSnap.id, ...data };
             setCaseFile(fetchedCaseFile);
 
-            // If current user is a client, fetch the lawyer's profile
-            if (userProfile.role === 'client' && fetchedCaseFile.lawyerUid) {
+            if (fetchedCaseFile.lawyerUid) { // Fetch lawyer profile for both lawyer (self) and client
               const lawyerDocRef = doc(db, 'users', fetchedCaseFile.lawyerUid);
               const lawyerDocSnap = await getDoc(lawyerDocRef);
               if (lawyerDocSnap.exists()) {
                 setLawyerProfile(lawyerDocSnap.data() as UserProfile);
               } else {
                 console.warn(`Lawyer profile not found for UID: ${fetchedCaseFile.lawyerUid}`);
-                // Optionally set an error or handle gracefully
               }
             }
           } else {
@@ -101,13 +98,14 @@ export default function CaseDetailPage() {
     return (
       <div className="flex flex-1 items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-2">Loading case details...</span>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center text-center">
+      <div className="flex flex-1 flex-col items-center justify-center text-center p-6">
         <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
         <h2 className="text-2xl font-semibold mb-2">Error</h2>
         <p className="text-muted-foreground mb-6">{error}</p>
@@ -119,21 +117,22 @@ export default function CaseDetailPage() {
   }
 
   if (!caseFile) {
-    return <div className="flex flex-1 items-center justify-center">Case data not available.</div>;
+    return <div className="flex flex-1 items-center justify-center p-6">Case data not available.</div>;
   }
 
   const isLawyerOwner = userProfile?.role === 'lawyer' && userProfile.uid === caseFile.lawyerUid;
 
   const handleDocumentUploaded = (dataUri: string, fileName: string) => {
     setUploadedDocumentForTagging({ dataUri, name: fileName });
-    setShowUploadModal(false); 
+    // Keep modal open, AI tagging tool will be displayed within or below it.
+    // Or, if AI tagging is separate, then: setShowUploadModal(false);
   };
 
 
   return (
-    <div className="space-y-6">
-      <Button variant="outline" onClick={() => router.back()} className="mb-4">
-        <ArrowLeft className="mr-2 h-4 w-4" /> Back to Cases
+    <div className="space-y-6 p-1 md:p-4 lg:p-6">
+      <Button variant="outline" onClick={() => router.back()} className="mb-4 print:hidden">
+        <ArrowLeft className="mr-2 h-4 w-4" /> Back
       </Button>
 
       <Card className="shadow-lg">
@@ -141,10 +140,10 @@ export default function CaseDetailPage() {
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
             <div>
               <CardTitle className="text-3xl">{caseFile.caseNumber}</CardTitle>
-              <CardDescription>Details for case {userProfile?.role === 'lawyer' ? 'managed by your firm' : 'you are involved in'}.</CardDescription>
+              <CardDescription>Client: {caseFile.clientName} ({caseFile.clientEmail})</CardDescription>
             </div>
             {isLawyerOwner && (
-              <Button asChild variant="outline">
+              <Button asChild variant="outline" className="print:hidden">
                 <Link href={`/cases/${caseId}/edit`}> 
                   <Edit3 className="mr-2 h-4 w-4" /> Edit Case
                 </Link>
@@ -153,12 +152,10 @@ export default function CaseDetailPage() {
           </div>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
-          <div><strong className="font-medium text-muted-foreground">Client Name:</strong> {caseFile.clientName}</div>
-          <div><strong className="font-medium text-muted-foreground">Client Email:</strong> {caseFile.clientEmail}</div>
           <div><strong className="font-medium text-muted-foreground">Court:</strong> {caseFile.court}</div>
           <div>
             <strong className="font-medium text-muted-foreground">Status:</strong>{' '}
-            <Badge variant={caseFile.status === 'active' ? 'default' : 'secondary'} className="capitalize">
+            <Badge variant={caseFile.status === 'active' ? 'default' : caseFile.status === 'closed' ? 'destructive' : 'secondary'} className="capitalize">
               {caseFile.status}
             </Badge>
           </div>
@@ -170,67 +167,88 @@ export default function CaseDetailPage() {
           )}
           <div className="md:col-span-2">
             <strong className="font-medium text-muted-foreground">Description:</strong>
-            <p className="mt-1 text-sm">{caseFile.description || 'No description provided.'}</p>
+            <p className="mt-1 text-sm whitespace-pre-line">{caseFile.description || 'No description provided.'}</p>
           </div>
-          <div className="md:col-span-2">
-            <strong className="font-medium text-muted-foreground">Created At:</strong>{' '}
+          <div className="text-xs text-muted-foreground"><strong className="font-medium">Created:</strong>{' '}
             {caseFile.createdAt instanceof Timestamp ? caseFile.createdAt.toDate().toLocaleString() : new Date(caseFile.createdAt).toLocaleString()}
           </div>
-           <div className="md:col-span-2">
-            <strong className="font-medium text-muted-foreground">Last Updated:</strong>{' '}
+           <div className="text-xs text-muted-foreground"><strong className="font-medium">Last Updated:</strong>{' '}
             {caseFile.updatedAt instanceof Timestamp ? caseFile.updatedAt.toDate().toLocaleString() : new Date(caseFile.updatedAt).toLocaleString()}
           </div>
         </CardContent>
       </Card>
 
-      {userProfile?.role === 'client' && lawyerProfile && (
+      {lawyerProfile && (
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <User className="h-6 w-6 text-primary" />
-              Your Lawyer's Information
+              {userProfile?.role === 'client' ? "Your Lawyer's Information" : "Assigned Lawyer"}
             </CardTitle>
-            <CardDescription>Contact details for your legal representative.</CardDescription>
+            <CardDescription>Contact and professional details for the lawyer on this case.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
              <div className="flex items-center gap-3">
-                <Avatar className="h-12 w-12">
+                <Avatar className="h-16 w-16">
                     <AvatarImage src={lawyerProfile.photoURL || `https://placehold.co/100x100.png?text=${getInitials(lawyerProfile.displayName)}`} alt={lawyerProfile.displayName || "Lawyer"} data-ai-hint="lawyer avatar"/>
                     <AvatarFallback>{getInitials(lawyerProfile.displayName)}</AvatarFallback>
                 </Avatar>
-                <p className="text-lg font-semibold">{lawyerProfile.displayName}</p>
+                <div>
+                    <p className="text-xl font-semibold">{lawyerProfile.displayName}</p>
+                    {lawyerProfile.lskRegistrationNumber && (
+                        <p className="text-sm text-muted-foreground">LSK No: {lawyerProfile.lskRegistrationNumber}</p>
+                    )}
+                </div>
              </div>
-             {lawyerProfile.email && (
-                <div className="flex items-center gap-2 text-sm">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                    <a href={`mailto:${lawyerProfile.email}`} className="hover:underline">{lawyerProfile.email}</a>
-                </div>
-             )}
-             {lawyerProfile.phoneNumber && (
-                <div className="flex items-center gap-2 text-sm">
-                    <Phone className="h-4 w-4 text-muted-foreground" />
-                    <span>{lawyerProfile.phoneNumber}</span>
-                </div>
-             )}
-             {lawyerProfile.lawFirmName && (
-                <div className="flex items-center gap-2 text-sm">
-                    <Building className="h-4 w-4 text-muted-foreground" />
-                    <span>{lawyerProfile.lawFirmName}</span>
-                </div>
-             )}
-             {lawyerProfile.lawFirmAddress && (
-                <div className="flex items-start gap-2 text-sm">
-                    <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
-                    <span className="whitespace-pre-line">{lawyerProfile.lawFirmAddress}</span>
-                </div>
-             )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                {lawyerProfile.email && (
+                    <div className="flex items-center gap-2">
+                        <Mail className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <a href={`mailto:${lawyerProfile.email}`} className="hover:underline break-all">{lawyerProfile.email}</a>
+                    </div>
+                )}
+                {lawyerProfile.phoneNumber && (
+                    <div className="flex items-center gap-2">
+                        <Phone className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <span>{lawyerProfile.phoneNumber}</span>
+                    </div>
+                )}
+                {lawyerProfile.lawFirmName && (
+                    <div className="flex items-center gap-2">
+                        <Building className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <span>{lawyerProfile.lawFirmName}</span>
+                    </div>
+                )}
+                {lawyerProfile.lawFirmAddress && (
+                    <div className="flex items-start gap-2 md:col-span-2"> {/* Address can span full width if long */}
+                        <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                        <span className="whitespace-pre-line">{lawyerProfile.lawFirmAddress}</span>
+                    </div>
+                )}
+                {lawyerProfile.role === 'lawyer' && (lawyerProfile.lskVerificationStatus || lawyerProfile.lawFirmVerificationStatus) && (
+                    <div className="md:col-span-2 pt-2 mt-2 border-t">
+                        <h4 className="font-medium text-sm mb-1">Verification Status:</h4>
+                        <div className="flex flex-wrap gap-2">
+                            {lawyerProfile.lskRegistrationNumber && (
+                                <Badge variant={lawyerProfile.lskVerificationStatus === 'verified' ? 'default' : lawyerProfile.lskVerificationStatus === 'pending_review' ? 'secondary' : lawyerProfile.lskVerificationStatus === 'rejected' ? 'destructive' : 'outline'} className="capitalize">
+                                    <ShieldCheck className="mr-1.5 h-3.5 w-3.5" /> LSK: {lawyerProfile.lskVerificationStatus?.replace('_', ' ') || 'Unverified'}
+                                </Badge>
+                            )}
+                            {(lawyerProfile.lawFirmName || lawyerProfile.lawFirmAddress) && (
+                                 <Badge variant={lawyerProfile.lawFirmVerificationStatus === 'verified' ? 'default' : lawyerProfile.lawFirmVerificationStatus === 'pending_review' ? 'secondary' : lawyerProfile.lawFirmVerificationStatus === 'rejected' ? 'destructive' : 'outline'} className="capitalize">
+                                    <ShieldCheck className="mr-1.5 h-3.5 w-3.5" /> Firm: {lawyerProfile.lawFirmVerificationStatus?.replace('_', ' ') || 'Unverified'}
+                                </Badge>
+                            )}
+                        </div>
+                    </div>
+                )}
+            </div>
           </CardContent>
         </Card>
       )}
 
 
-      {/* Documents Section */}
-      <Card className="shadow-lg">
+      <Card className="shadow-lg print:hidden">
         <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Case Documents</CardTitle>
             {isLawyerOwner && (
@@ -240,15 +258,16 @@ export default function CaseDetailPage() {
             )}
         </CardHeader>
         <CardContent>
-          {/* TODO: List documents here */}
-          <p className="text-muted-foreground">No documents uploaded yet.</p>
+          <p className="text-muted-foreground">No documents uploaded yet. (Document listing not yet implemented)</p>
           {uploadedDocumentForTagging && isLawyerOwner && (
-            <AiTaggingTool
-              documentName={uploadedDocumentForTagging.name}
-              documentDataUri={uploadedDocumentForTagging.dataUri}
-              caseId={caseId}
-              onTagsApplied={() => setUploadedDocumentForTagging(null)} 
-            />
+            <div className="mt-4">
+                <AiTaggingTool
+                documentName={uploadedDocumentForTagging.name}
+                documentDataUri={uploadedDocumentForTagging.dataUri}
+                caseId={caseId}
+                onTagsApplied={() => setUploadedDocumentForTagging(null)} 
+                />
+            </div>
           )}
         </CardContent>
       </Card>

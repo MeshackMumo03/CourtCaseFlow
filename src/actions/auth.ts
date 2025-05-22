@@ -22,24 +22,21 @@ export async function createUserProfileInFirestore(
 ): Promise<ActionResult> {
   try {
     const userDocRef = doc(db, 'users', uid);
-    // Ensure all fields, especially optional ones for lawyers, are considered.
     const userProfileData: Omit<UserProfile, 'createdAt' | 'uid'> & { uid: string; createdAt: any } = {
       uid,
       email: email!, 
       displayName: displayName!, 
       role,
-      createdAt: serverTimestamp(), // Let Firestore handle the timestamp
+      createdAt: serverTimestamp(),
       phoneNumber: phoneNumber || undefined,
       lawFirmName: role === 'lawyer' ? '' : undefined,
       lawFirmAddress: role === 'lawyer' ? '' : undefined,
-      lskRegistrationNumber: undefined, 
+      lskRegistrationNumber: role === 'lawyer' ? '' : undefined, 
       photoURL: undefined,             
       lskVerificationStatus: role === 'lawyer' ? 'unverified' : undefined,
       lawFirmVerificationStatus: role === 'lawyer' ? 'unverified' : undefined,
     };
 
-    // Clean profile data to remove undefined fields before setting to Firestore
-    // This prevents Firestore from storing explicit 'undefined' values for optional fields.
     const cleanProfileData: { [key: string]: any } = {};
     for (const key in userProfileData) {
       if (userProfileData[key as keyof typeof userProfileData] !== undefined) {
@@ -70,8 +67,9 @@ export async function updateUserProfileDetails(
   try {
     const userDocRef = doc(db, 'users', uid);
     
-    const updateData: Record<string, any> = { ...details };
-
+    // Explicitly type the object passed to updateDoc
+    const updateData: { [key: string]: any } = { ...details };
+    
     // Filter out undefined values to prevent overwriting fields with undefined
     // This is particularly important for PartialDeep types
     const filterUndefinedRecursively = (obj: any): any => {
@@ -93,7 +91,7 @@ export async function updateUserProfileDetails(
     await updateDoc(userDocRef, cleanedUpdateData);
 
     // Construct a partial profile to return for optimistic updates
-    // This should reflect the actual fields that were intended to be updated
+    // This should reflect the actual fields that were intended to be updated including statuses
     const updatedProfileFields: Partial<UserProfile> = {};
     if (details.displayName !== undefined) updatedProfileFields.displayName = details.displayName;
     if (details.phoneNumber !== undefined) updatedProfileFields.phoneNumber = details.phoneNumber;
@@ -102,14 +100,18 @@ export async function updateUserProfileDetails(
     if (details.lawFirmName !== undefined) updatedProfileFields.lawFirmName = details.lawFirmName;
     if (details.lawFirmAddress !== undefined) updatedProfileFields.lawFirmAddress = details.lawFirmAddress;
     if (details.lskRegistrationNumber !== undefined) updatedProfileFields.lskRegistrationNumber = details.lskRegistrationNumber;
-    if (details.lskVerificationStatus !== undefined) updatedProfileFields.lskVerificationStatus = details.lskVerificationStatus;
-    if (details.lawFirmVerificationStatus !== undefined) updatedProfileFields.lawFirmVerificationStatus = details.lawFirmVerificationStatus;
-
+    
+    // Ensure verification statuses are included in the returned profile if they were part of the update
+    if (cleanedUpdateData.lskVerificationStatus !== undefined) {
+      updatedProfileFields.lskVerificationStatus = cleanedUpdateData.lskVerificationStatus;
+    }
+    if (cleanedUpdateData.lawFirmVerificationStatus !== undefined) {
+      updatedProfileFields.lawFirmVerificationStatus = cleanedUpdateData.lawFirmVerificationStatus;
+    }
 
     return { success: true, message: 'Profile updated successfully.', updatedProfile: updatedProfileFields };
   } catch (error: any) {
-    console.error('Error updating user profile in Firestore:', error);
+    console.error('[updateUserProfileDetails] Error:', error);
     return { success: false, message: error.message || 'Failed to update profile in database.' };
   }
 }
-

@@ -8,14 +8,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, UserCircle, Edit3, Save, Upload, Mail, Phone, Building, MapPin } from 'lucide-react';
+import { Loader2, Edit3, Save, Upload, Mail, Phone, Building, MapPin, UserCircle } from 'lucide-react'; // Added UserCircle
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef, ChangeEvent } from 'react';
 import { updateUserProfileDetails } from '@/actions/auth';
 import { useToast } from '@/hooks/use-toast';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { updateProfile as updateFirebaseProfile, EmailAuthProvider, reauthenticateWithCredential, updateEmail as updateFirebaseAuthEmail } from 'firebase/auth';
-import { auth, storage, db } from '@/lib/firebase'; 
+import { auth, storage } from '@/lib/firebase'; 
 import type { UserProfile } from '@/types';
 import { Textarea } from '@/components/ui/textarea';
 import * as z from 'zod';
@@ -46,19 +46,27 @@ export default function ProfilePage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const populateFormFields = useCallback((profile: UserProfile | null) => {
+    if (profile) {
+      setDisplayName(profile.displayName || '');
+      setPhoneNumber(profile.phoneNumber || '');
+      setLawFirmName(profile.lawFirmName || '');
+      setLawFirmAddress(profile.lawFirmAddress || '');
+      setLskRegistrationNumber(profile.lskRegistrationNumber || '');
+      setProfilePicturePreview(profile.photoURL || null);
+      setNewEmail(profile.email || ''); // Initialize newEmail with current email
+    }
+  }, []);
+
+
   useEffect(() => {
     if (!authLoading && !userProfile) {
       router.replace('/login');
     }
     if (userProfile) {
-      setDisplayName(userProfile.displayName || '');
-      setPhoneNumber(userProfile.phoneNumber || '');
-      setLawFirmName(userProfile.lawFirmName || '');
-      setLawFirmAddress(userProfile.lawFirmAddress || '');
-      setLskRegistrationNumber(userProfile.lskRegistrationNumber || '');
-      setProfilePicturePreview(userProfile.photoURL || null);
+      populateFormFields(userProfile);
     }
-  }, [userProfile, authLoading, router]);
+  }, [userProfile, authLoading, router, populateFormFields]);
 
   const getInitials = (name: string | null | undefined) => {
     if (!name) return "U";
@@ -83,28 +91,32 @@ export default function ProfilePage() {
 
   const resetEditForm = () => {
     if (userProfile) {
-      setDisplayName(userProfile.displayName || '');
-      setPhoneNumber(userProfile.phoneNumber || '');
-      setLawFirmName(userProfile.lawFirmName || '');
-      setLawFirmAddress(userProfile.lawFirmAddress || '');
-      setLskRegistrationNumber(userProfile.lskRegistrationNumber || '');
-      setProfilePictureFile(null);
-      setProfilePicturePreview(userProfile.photoURL || null);
-      setNewEmail('');
-      setCurrentPasswordForEmailChange('');
+      populateFormFields(userProfile); // Use the central populating function
+      setProfilePictureFile(null); // Clear file selection
+      // profilePicturePreview is already reset by populateFormFields
+      setCurrentPasswordForEmailChange(''); // Clear password field
     }
   }
 
   const handleSaveProfile = async () => {
     if (!user || !userProfile) return;
 
-    let newPhotoURL = userProfile.photoURL; 
+    // Create a snapshot of the current state for comparison
+    const initialProfileState = {
+      displayName: userProfile.displayName || '',
+      phoneNumber: userProfile.phoneNumber || '',
+      lawFirmName: userProfile.lawFirmName || '',
+      lawFirmAddress: userProfile.lawFirmAddress || '',
+      lskRegistrationNumber: userProfile.lskRegistrationNumber || '',
+      photoURL: userProfile.photoURL || null,
+    };
+    
     const detailsToUpdate: Partial<UserProfile> = {};
     let lskStatusUpdate: UserProfile['lskVerificationStatus'] | undefined = undefined;
     let firmStatusUpdate: UserProfile['lawFirmVerificationStatus'] | undefined = undefined;
 
 
-    if (phoneNumber !== (userProfile.phoneNumber || '')) {
+    if (phoneNumber !== initialProfileState.phoneNumber) {
         if (phoneNumber && !phoneRegex.test(phoneNumber)) {
             toast({ variant: 'destructive', title: 'Invalid Phone Number', description: 'Please enter a valid phone number.'});
             return;
@@ -112,7 +124,7 @@ export default function ProfilePage() {
         detailsToUpdate.phoneNumber = phoneNumber;
     }
     
-    if (displayName !== (userProfile.displayName || '')) {
+    if (displayName !== initialProfileState.displayName) {
         if (displayName.length < 2) {
              toast({ variant: 'destructive', title: 'Invalid Display Name', description: 'Display name must be at least 2 characters.'});
             return;
@@ -121,41 +133,55 @@ export default function ProfilePage() {
     }
 
     if (userProfile.role === 'lawyer') {
-      if (lawFirmName !== (userProfile.lawFirmName || '')) {
+      if (lawFirmName !== initialProfileState.lawFirmName) {
         detailsToUpdate.lawFirmName = lawFirmName;
         firmStatusUpdate = 'pending_review';
       }
-      if (lawFirmAddress !== (userProfile.lawFirmAddress || '')) {
+      if (lawFirmAddress !== initialProfileState.lawFirmAddress) {
         detailsToUpdate.lawFirmAddress = lawFirmAddress;
-        firmStatusUpdate = 'pending_review'; // Also trigger review if address changes
+        firmStatusUpdate = 'pending_review';
       }
-      if (lskRegistrationNumber !== (userProfile.lskRegistrationNumber || '')) {
+      if (lskRegistrationNumber !== initialProfileState.lskRegistrationNumber) {
         detailsToUpdate.lskRegistrationNumber = lskRegistrationNumber;
-        lskStatusUpdate = 'pending_review';
+        if(lskRegistrationNumber) { // Only trigger review if a number is provided
+            lskStatusUpdate = 'pending_review';
+        } else { // If cleared, revert to unverified
+            lskStatusUpdate = 'unverified';
+        }
       }
     }
     if (lskStatusUpdate) detailsToUpdate.lskVerificationStatus = lskStatusUpdate;
     if (firmStatusUpdate) detailsToUpdate.lawFirmVerificationStatus = firmStatusUpdate;
 
-
     setIsSaving(true);
 
     try {
+      let newPhotoURL = profilePicturePreview; // Start with current preview or existing URL
       if (profilePictureFile) {
         const filePath = `profile-pictures/${user.uid}/${profilePictureFile.name}`;
         const fileStorageRef = storageRef(storage, filePath);
         await uploadBytes(fileStorageRef, profilePictureFile);
         newPhotoURL = await getDownloadURL(fileStorageRef);
         detailsToUpdate.photoURL = newPhotoURL;
+      } else if (profilePicturePreview !== initialProfileState.photoURL) {
+        // This case covers if the preview was cleared or changed without a new file (e.g. to default)
+        // Though typically clearing would mean setting photoURL to null/undefined in detailsToUpdate
+        // For now, if profilePictureFile is null, photoURL changes are handled if detailsToUpdate.photoURL is set
       }
+
 
       const authProfileUpdates: { displayName?: string; photoURL?: string } = {};
       if (detailsToUpdate.displayName && detailsToUpdate.displayName !== user.displayName) {
         authProfileUpdates.displayName = detailsToUpdate.displayName;
       }
+      // Use the potentially updated newPhotoURL for Firebase Auth profile
       if (detailsToUpdate.photoURL && detailsToUpdate.photoURL !== user.photoURL) {
         authProfileUpdates.photoURL = detailsToUpdate.photoURL;
+      } else if (newPhotoURL !== user.photoURL && !detailsToUpdate.photoURL && profilePictureFile) {
+        // If photoURL was updated via profilePictureFile but not explicitly in detailsToUpdate yet
+        authProfileUpdates.photoURL = newPhotoURL;
       }
+
 
       if (Object.keys(authProfileUpdates).length > 0) {
         await updateFirebaseProfile(user, authProfileUpdates);
@@ -166,15 +192,8 @@ export default function ProfilePage() {
         if (!result.success || !result.updatedProfile) {
           throw new Error(result.message || 'Failed to update profile in database.');
         }
-        // Update local context with all successful changes from Firestore
-         setUserProfile(prev => {
-            if (!prev) return null;
-            // Firestore is the source of truth after update, so spread result.updatedProfile
-            return { ...prev, ...result.updatedProfile };
-         });
+        setUserProfile(prev => prev ? { ...prev, ...result.updatedProfile } : null);
       } else if (Object.keys(authProfileUpdates).length > 0) {
-        // If only Auth profile was updated (e.g. only display name or photoURL from a different source than Firestore)
-        // Still update local context for consistency
          setUserProfile(prev => {
             if (!prev) return null;
             const updated = {...prev};
@@ -214,41 +233,28 @@ export default function ProfilePage() {
       return;
     }
     if (newEmail === user.email) {
-      toast({ variant: 'destructive', title: 'No Change', description: 'The new email is the same as your current email.' });
+      toast({ variant: 'default', title: 'No Change', description: 'The new email is the same as your current email.' });
       return;
     }
 
 
     setIsUpdatingEmail(true);
     try {
-      // Step 1: Re-authenticate the user
       const credential = EmailAuthProvider.credential(user.email, currentPasswordForEmailChange);
       await reauthenticateWithCredential(user, credential);
+      await updateFirebaseAuthEmail(user, newEmail); // Update Firebase Auth email
 
-      // Step 2: Update email in Firebase Authentication
-      await updateFirebaseAuthEmail(user, newEmail);
-
-      // Step 3: Update email in Firestore via server action
-      const result = await updateUserProfileDetails(user.uid, { email: newEmail });
+      const result = await updateUserProfileDetails(user.uid, { email: newEmail }); // Update Firestore email
       if (!result.success || !result.updatedProfile) {
-        // If Firestore update fails, ideally we should consider reverting the Firebase Auth email change
-        // or at least strongly informing the user. For now, we'll log and notify.
         console.error('Firebase Auth email updated, but Firestore update failed for email.');
         throw new Error(result.message || 'Failed to update email in database. Auth email changed but profile database may be out of sync.');
       }
 
-      // Step 4: Update local user profile state
-      setUserProfile(prev => {
-        if (!prev) return null;
-        return { ...prev, email: newEmail };
-      });
+      setUserProfile(prev => prev ? { ...prev, email: newEmail, ...result.updatedProfile } : null);
+      toast({ title: 'Email Updated Successfully', description: 'Your email address has been changed. You may need to log in again with your new email.' });
+      setCurrentPasswordForEmailChange(''); // Clear password field
 
-      toast({ title: 'Email Updated Successfully', description: 'Your email address has been changed. You may need to log in again with your new email for all services to reflect the change.' });
-      setNewEmail('');
-      setCurrentPasswordForEmailChange('');
-
-    } catch (error: any)
- {
+    } catch (error: any) {
       console.error('Error updating email:', error);
       let description = 'An unexpected error occurred while updating your email.';
       if (error.code) {
@@ -286,15 +292,25 @@ export default function ProfilePage() {
     return (
       <div className="flex flex-1 items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-2">Loading profile...</span>
       </div>
     );
   }
+  
+  const currentAvatarSrc = profilePicturePreview || `https://placehold.co/100x100.png?text=${getInitials(userProfile.displayName)}&txtsize=33`;
 
-  const currentAvatarSrc = profilePicturePreview || userProfile.photoURL || `https://placehold.co/100x100.png?text=${getInitials(userProfile.displayName)}&txtsize=33`;
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight">Your Profile</h1>
+    <div className="space-y-6 pb-12">
+      <div className="flex items-center justify-between">
+         <h1 className="text-3xl font-bold tracking-tight">Your Profile</h1>
+         {!isEditing && (
+            <Button onClick={() => setIsEditing(true)}>
+              <Edit3 className="mr-2 h-4 w-4" /> Edit Profile
+            </Button>
+          )}
+      </div>
+     
       <Card className="max-w-2xl mx-auto">
         <CardHeader className="items-center text-center">
           <div className="relative group">
@@ -320,9 +336,12 @@ export default function ProfilePage() {
             onChange={handleFileChange}
             accept="image/png, image/jpeg, image/gif"
             className="hidden"
+            disabled={!isEditing || isSaving}
           />
-          <CardTitle className="text-2xl">{isEditing ? 'Edit Profile' : userProfile.displayName}</CardTitle>
-          <CardDescription className="capitalize">{userProfile.role}</CardDescription>
+          <CardTitle className="text-2xl">{isEditing ? 'Edit Profile Details' : userProfile.displayName}</CardTitle>
+          <CardDescription className="capitalize flex items-center gap-1">
+            <UserCircle className="h-4 w-4 text-muted-foreground" /> {userProfile.role}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -340,6 +359,7 @@ export default function ProfilePage() {
                 id="displayName" 
                 value={displayName} 
                 onChange={(e) => setDisplayName(e.target.value)} 
+                disabled={isSaving}
               />
             ) : (
               <Input id="displayName" value={userProfile.displayName || ''} readOnly disabled className="bg-muted/50"/>
@@ -353,10 +373,11 @@ export default function ProfilePage() {
                 <Input 
                     id="phoneNumber" 
                     type="tel"
-                    placeholder="e.g., +1 234 567 8900"
+                    placeholder="e.g., +254 700 123456"
                     value={phoneNumber} 
                     onChange={(e) => setPhoneNumber(e.target.value)} 
                     className="pl-10"
+                    disabled={isSaving}
                 />
                 ) : (
                 <Input id="phoneNumber" type="tel" value={userProfile.phoneNumber || 'Not provided'} readOnly disabled className="bg-muted/50 pl-10"/>
@@ -375,10 +396,11 @@ export default function ProfilePage() {
                   {isEditing ? (
                     <Input
                       id="lawFirmName"
-                      placeholder="e.g., Acme Law Group"
+                      placeholder="e.g., CaseLink Associates LLP"
                       value={lawFirmName}
                       onChange={(e) => setLawFirmName(e.target.value)}
                       className="pl-10"
+                      disabled={isSaving}
                     />
                   ) : (
                     <Input id="lawFirmName" value={userProfile.lawFirmName || 'Not provided'} readOnly disabled className="bg-muted/50 pl-10"/>
@@ -393,11 +415,12 @@ export default function ProfilePage() {
                 {isEditing ? (
                   <Textarea
                     id="lawFirmAddress"
-                    placeholder="e.g., 123 Main St, Anytown, USA"
+                    placeholder="e.g., 123 Legal Avenue, Nairobi, Kenya"
                     value={lawFirmAddress}
                     onChange={(e) => setLawFirmAddress(e.target.value)}
                     className="pl-10"
                     rows={3}
+                    disabled={isSaving}
                   />
                 ) : (
                   <Textarea id="lawFirmAddress" value={userProfile.lawFirmAddress || 'Not provided'} readOnly disabled className="bg-muted/50 pl-10" rows={3}/>
@@ -412,93 +435,87 @@ export default function ProfilePage() {
                      {isEditing ? (
                         <Input 
                             id="lskRegistrationNumber" 
-                            placeholder="e.g., LSK/YYYY/NNNNN"
+                            placeholder="e.g., P.105/XXXXX/YY"
                             value={lskRegistrationNumber} 
                             onChange={(e) => setLskRegistrationNumber(e.target.value)} 
+                            disabled={isSaving}
                         />
                         ) : (
                         <Input id="lskRegistrationNumber" value={userProfile.lskRegistrationNumber || 'Not provided'} readOnly disabled className="bg-muted/50"/>
                     )}
                 </div>
-                <div className="space-y-1">
-                    <p className="text-sm font-medium">LSK Status: <span className="font-normal text-muted-foreground capitalize">{userProfile.lskVerificationStatus || 'Unverified'}</span></p>
-                     <p className="text-sm font-medium">Law Firm Status: <span className="font-normal text-muted-foreground capitalize">{userProfile.lawFirmVerificationStatus || 'Unverified'}</span></p>
+                <div className="space-y-1 text-sm">
+                    <p>LSK Status: <Badge variant={userProfile.lskVerificationStatus === 'verified' ? 'default' : userProfile.lskVerificationStatus === 'pending_review' ? 'secondary' : userProfile.lskVerificationStatus === 'rejected' ? 'destructive': 'outline'} className="capitalize">{userProfile.lskVerificationStatus?.replace('_', ' ') || 'Unverified'}</Badge></p>
+                    <p>Firm Status: <Badge variant={userProfile.lawFirmVerificationStatus === 'verified' ? 'default' : userProfile.lawFirmVerificationStatus === 'pending_review' ? 'secondary' : userProfile.lawFirmVerificationStatus === 'rejected' ? 'destructive' : 'outline'} className="capitalize">{userProfile.lawFirmVerificationStatus?.replace('_', ' ') || 'Unverified'}</Badge></p>
                 </div>
+                 {(userProfile.lskVerificationStatus === 'pending_review' || userProfile.lawFirmVerificationStatus === 'pending_review') && isEditing && (
+                    <p className="text-xs text-muted-foreground">Changes to LSK number or law firm details will reset verification status to 'Pending Review'.</p>
+                )}
             </>
           )}
-
-          <Separator />
-
-          <div className="space-y-2">
-            <p className="text-sm font-medium">Account Created</p>
-            <p className="text-sm text-muted-foreground">
-              {userProfile.createdAt?.toDate ? userProfile.createdAt.toDate().toLocaleDateString() : 'Date not available'}
-            </p>
-          </div>
         </CardContent>
         <CardFooter className="flex justify-end gap-2">
-          {isEditing ? (
+          {isEditing && ( // Only show Save/Cancel when editing
             <>
               <Button variant="outline" onClick={() => { 
                   setIsEditing(false); 
                   resetEditForm();
-                }} disabled={isSaving}>
+                }} disabled={isSaving || isUpdatingEmail}>
                 Cancel
               </Button>
               <Button onClick={handleSaveProfile} disabled={isSaving || isUpdatingEmail}>
-                {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                 Save Profile
               </Button>
             </>
-          ) : (
-            <Button onClick={() => setIsEditing(true)}>
-              <Edit3 className="mr-2 h-4 w-4" /> Edit Profile
-            </Button>
           )}
         </CardFooter>
       </Card>
 
-      {/* Change Email Card - Now Active */}
-      <Card className="max-w-2xl mx-auto mt-6">
-        <CardHeader>
-            <CardTitle>Change Email Address</CardTitle>
-            <CardDescription>
-                To change your email, please enter your new email address and your current password.
-                You may need to log in again after the change.
-            </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-            <div>
-                <Label htmlFor="newEmail">New Email Address</Label>
-                <Input 
-                    id="newEmail" 
-                    type="email" 
-                    placeholder="new.email@example.com" 
-                    value={newEmail}
-                    onChange={(e) => setNewEmail(e.target.value)}
-                    disabled={isUpdatingEmail || isSaving || !isEditing}
-                />
-            </div>
-            <div>
-                <Label htmlFor="currentPasswordForEmailChange">Current Password</Label>
-                <Input 
-                    id="currentPasswordForEmailChange" 
-                    type="password" 
-                    placeholder="••••••••" 
-                    value={currentPasswordForEmailChange}
-                    onChange={(e) => setCurrentPasswordForEmailChange(e.target.value)}
-                    disabled={isUpdatingEmail || isSaving || !isEditing}
-                />
-            </div>
-        </CardContent>
-        <CardFooter>
-            <Button onClick={handleUpdateEmail} disabled={isUpdatingEmail || isSaving || !isEditing || !newEmail || !currentPasswordForEmailChange}>
-                {isUpdatingEmail && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Update Email
-            </Button>
-        </CardFooter>
-      </Card>
+      {isEditing && ( // Show email change form only when main profile editing is active
+        <Card className="max-w-2xl mx-auto mt-6">
+            <CardHeader>
+                <CardTitle>Change Email Address</CardTitle>
+                <CardDescription>
+                    To change your email, enter your new email and current password. You may need to log in again after the change.
+                </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                <div>
+                    <Label htmlFor="newEmail">New Email Address</Label>
+                    <Input 
+                        id="newEmail" 
+                        type="email" 
+                        placeholder="new.email@example.com" 
+                        value={newEmail}
+                        onChange={(e) => setNewEmail(e.target.value)}
+                        disabled={isUpdatingEmail || isSaving}
+                    />
+                </div>
+                <div>
+                    <Label htmlFor="currentPasswordForEmailChange">Current Password</Label>
+                    <Input 
+                        id="currentPasswordForEmailChange" 
+                        type="password" 
+                        placeholder="••••••••" 
+                        value={currentPasswordForEmailChange}
+                        onChange={(e) => setCurrentPasswordForEmailChange(e.target.value)}
+                        disabled={isUpdatingEmail || isSaving}
+                    />
+                </div>
+            </CardContent>
+            <CardFooter>
+                <Button onClick={handleUpdateEmail} disabled={isUpdatingEmail || isSaving || !newEmail || !currentPasswordForEmailChange || newEmail === userProfile.email}>
+                    {isUpdatingEmail && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Update Email
+                </Button>
+            </CardFooter>
+        </Card>
+      )}
     </div>
   );
 }
 
+// Added useCallback to satisfy ESLint exhaustive-deps for useEffect
+import { useCallback } from 'react';
+import { Badge } from '@/components/ui/badge';
