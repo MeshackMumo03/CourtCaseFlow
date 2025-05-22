@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Edit3, Save, Upload, Mail, Phone, Building, MapPin, UserCircle } from 'lucide-react'; // Added UserCircle
+import { Loader2, Edit3, Save, Upload, Mail, Phone, Building, MapPin, UserCircle } from 'lucide-react'; 
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef, ChangeEvent, useCallback } from 'react';
 import { updateUserProfileDetails } from '@/actions/auth';
@@ -55,7 +55,7 @@ export default function ProfilePage() {
       setLawFirmAddress(profile.lawFirmAddress || '');
       setLskRegistrationNumber(profile.lskRegistrationNumber || '');
       setProfilePicturePreview(profile.photoURL || null);
-      setNewEmail(profile.email || ''); // Initialize newEmail with current email
+      setNewEmail(profile.email || ''); 
     }
   }, []);
 
@@ -111,10 +111,7 @@ export default function ProfilePage() {
     };
     
     const detailsToUpdate: Partial<UserProfile> = {};
-    let lskStatusUpdate: UserProfile['lskVerificationStatus'] | undefined = undefined;
-    let firmStatusUpdate: UserProfile['lawFirmVerificationStatus'] | undefined = undefined;
-
-
+    
     if (phoneNumber !== initialProfileState.phoneNumber) {
         if (phoneNumber && !phoneRegex.test(phoneNumber)) {
             toast({ variant: 'destructive', title: 'Invalid Phone Number', description: 'Please enter a valid phone number.'});
@@ -134,38 +131,14 @@ export default function ProfilePage() {
     if (userProfile.role === 'lawyer') {
       if (lawFirmName !== initialProfileState.lawFirmName) {
         detailsToUpdate.lawFirmName = lawFirmName;
-        if (lawFirmName) firmStatusUpdate = 'pending_review'; else firmStatusUpdate = 'unverified';
       }
       if (lawFirmAddress !== initialProfileState.lawFirmAddress) {
         detailsToUpdate.lawFirmAddress = lawFirmAddress;
-        if (lawFirmAddress) firmStatusUpdate = 'pending_review'; else firmStatusUpdate = 'unverified';
       }
       if (lskRegistrationNumber !== initialProfileState.lskRegistrationNumber) {
         detailsToUpdate.lskRegistrationNumber = lskRegistrationNumber;
-        if(lskRegistrationNumber) { 
-            lskStatusUpdate = 'pending_review';
-        } else { 
-            lskStatusUpdate = 'unverified';
-        }
       }
     }
-
-    if (lskStatusUpdate) detailsToUpdate.lskVerificationStatus = lskStatusUpdate;
-    else if (userProfile.role === 'lawyer' && initialProfileState.lskRegistrationNumber && !lskRegistrationNumber) {
-      // Case where LSK number was cleared
-      detailsToUpdate.lskVerificationStatus = 'unverified';
-    }
-
-
-    if (firmStatusUpdate) detailsToUpdate.lawFirmVerificationStatus = firmStatusUpdate;
-    else if (userProfile.role === 'lawyer' && 
-             ((initialProfileState.lawFirmName && !lawFirmName) || (initialProfileState.lawFirmAddress && !lawFirmAddress)) &&
-             !lawFirmName && !lawFirmAddress 
-            ) {
-        // Case where both firm name and address were cleared
-        detailsToUpdate.lawFirmVerificationStatus = 'unverified';
-    }
-
 
     setIsSaving(true);
 
@@ -183,10 +156,9 @@ export default function ProfilePage() {
       if (detailsToUpdate.displayName && detailsToUpdate.displayName !== user.displayName) {
         authProfileUpdates.displayName = detailsToUpdate.displayName;
       }
-      if (detailsToUpdate.photoURL && detailsToUpdate.photoURL !== user.photoURL) {
-        authProfileUpdates.photoURL = detailsToUpdate.photoURL;
-      } else if (newPhotoURL !== user.photoURL && !detailsToUpdate.photoURL && profilePictureFile) {
+      if (newPhotoURL && newPhotoURL !== user.photoURL) { // Check newPhotoURL instead of detailsToUpdate.photoURL
         authProfileUpdates.photoURL = newPhotoURL;
+        if (!detailsToUpdate.photoURL) detailsToUpdate.photoURL = newPhotoURL; // ensure it's in firestore update too
       }
 
 
@@ -194,6 +166,7 @@ export default function ProfilePage() {
         await updateFirebaseProfile(user, authProfileUpdates);
       }
       
+      // Only call updateUserProfileDetails if there are actual changes for Firestore
       if (Object.keys(detailsToUpdate).length > 0) {
         const result = await updateUserProfileDetails(user.uid, detailsToUpdate);
         if (!result.success || !result.updatedProfile) {
@@ -201,14 +174,12 @@ export default function ProfilePage() {
         }
         setUserProfile(prev => {
           if (!prev) return null;
-          // Create a new object for the updated profile
           const updatedFirestoreProfile = { ...prev, ...result.updatedProfile };
-          // Ensure auth updates are also reflected if they weren't part of result.updatedProfile
           if (authProfileUpdates.displayName) updatedFirestoreProfile.displayName = authProfileUpdates.displayName;
           if (authProfileUpdates.photoURL) updatedFirestoreProfile.photoURL = authProfileUpdates.photoURL;
           return updatedFirestoreProfile;
         });
-      } else if (Object.keys(authProfileUpdates).length > 0) {
+      } else if (Object.keys(authProfileUpdates).length > 0) { // If only auth profile changed (e.g., only photoURL from initial state but file uploaded)
          setUserProfile(prev => {
             if (!prev) return null;
             const updated = {...prev};
@@ -251,7 +222,6 @@ export default function ProfilePage() {
       toast({ variant: 'default', title: 'No Change', description: 'The new email is the same as your current email.' });
       return;
     }
-
 
     setIsUpdatingEmail(true);
     try {
@@ -442,6 +412,9 @@ export default function ProfilePage() {
                 )}
                 <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 </div>
+                 {isEditing && (lawFirmName || lawFirmAddress) && (
+                    <p className="text-xs text-muted-foreground">Changes to Law Firm details will reset its verification status to 'Pending Review'.</p>
+                )}
               </div>
               <Separator />
                <h3 className="text-lg font-medium pt-2">Professional Verification</h3>
@@ -458,14 +431,14 @@ export default function ProfilePage() {
                         ) : (
                         <Input id="lskRegistrationNumber" value={userProfile.lskRegistrationNumber || 'Not provided'} readOnly disabled className="bg-muted/50"/>
                     )}
+                     {isEditing && lskRegistrationNumber && (
+                        <p className="text-xs text-muted-foreground">Changes to LSK number will reset its verification status to 'Pending Review'.</p>
+                    )}
                 </div>
                 <div className="space-y-1 text-sm">
                     <div className="flex items-center gap-1">LSK Status: <Badge variant={userProfile.lskVerificationStatus === 'verified' ? 'default' : userProfile.lskVerificationStatus === 'pending_review' ? 'secondary' : userProfile.lskVerificationStatus === 'rejected' ? 'destructive': 'outline'} className="capitalize">{userProfile.lskVerificationStatus?.replace('_', ' ') || 'Unverified'}</Badge></div>
                     <div className="flex items-center gap-1">Firm Status: <Badge variant={userProfile.lawFirmVerificationStatus === 'verified' ? 'default' : userProfile.lawFirmVerificationStatus === 'pending_review' ? 'secondary' : userProfile.lawFirmVerificationStatus === 'rejected' ? 'destructive' : 'outline'} className="capitalize">{userProfile.lawFirmVerificationStatus?.replace('_', ' ') || 'Unverified'}</Badge></div>
                 </div>
-                 {(userProfile.lskVerificationStatus === 'pending_review' || userProfile.lawFirmVerificationStatus === 'pending_review') && isEditing && (
-                    <p className="text-xs text-muted-foreground">Changes to LSK number or law firm details will reset verification status to 'Pending Review'.</p>
-                )}
             </>
           )}
         </CardContent>

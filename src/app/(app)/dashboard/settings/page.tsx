@@ -36,29 +36,46 @@ export default function SettingsPage() {
 
   const [darkMode, setDarkMode] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
 
   useEffect(() => {
     if (!authLoading && !userProfile) {
       router.replace('/login');
     }
-    // Load existing settings from localStorage or userProfile if they were ever saved
-    // For now, just setting dark mode based on system/localStorage preference
+    
     if (typeof window !== 'undefined') {
         const isDark = localStorage.getItem('theme') === 'dark' || 
                        (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches);
         setDarkMode(isDark);
+        if (isDark) document.documentElement.classList.add('dark');
+
+        const storedNotifSettings = localStorage.getItem('notificationSettings');
+        if (storedNotifSettings) {
+            try {
+                const settings = JSON.parse(storedNotifSettings);
+                setEmailNotificationsEnabled(settings.emailNotificationsEnabled ?? true);
+                setHearingRemindersEnabled(settings.hearingRemindersEnabled ?? true);
+                setCaseUpdatesEnabled(settings.caseUpdatesEnabled ?? true);
+            } catch (e) {
+                console.error("Failed to parse notification settings from localStorage", e);
+            }
+        }
     }
   }, [userProfile, authLoading, router]);
 
-  if (authLoading || !userProfile) {
-    return (
-      <div className="flex flex-1 items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <span className="ml-2">Loading settings...</span>
-      </div>
-    );
-  }
+  const handleNotificationChange = (setter: React.Dispatch<React.SetStateAction<boolean>>, key: string) => (checked: boolean) => {
+    setter(checked);
+    // Save to localStorage for UI persistence (no backend yet)
+    try {
+        const currentSettings = JSON.parse(localStorage.getItem('notificationSettings') || '{}');
+        currentSettings[key] = checked;
+        localStorage.setItem('notificationSettings', JSON.stringify(currentSettings));
+    } catch (e) {
+        console.error("Failed to save notification settings to localStorage", e);
+    }
+  };
+
 
   const handleDarkModeChange = (checked: boolean) => {
     setDarkMode(checked);
@@ -72,7 +89,10 @@ export default function SettingsPage() {
   };
 
   const handleSimulatedDeleteAccount = async () => {
-    setShowDeleteConfirm(false);
+    setIsDeleting(true);
+    // Simulate some async work
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
     toast({
       title: "Account Deletion (Simulated)",
       description: "Full account data deletion is not yet implemented. Signing you out.",
@@ -80,13 +100,25 @@ export default function SettingsPage() {
     });
     try {
       await auth.signOut();
-      setUserProfile(null); // Clear local profile
+      setUserProfile(null); 
       router.push('/login');
     } catch (error) {
       toast({ variant: 'destructive', title: 'Sign Out Failed', description: 'Could not sign out after simulated deletion.' });
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
     }
   };
 
+
+  if (authLoading || !userProfile) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-2">Loading settings...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 max-w-3xl mx-auto">
@@ -97,7 +129,7 @@ export default function SettingsPage() {
           <CardTitle className="flex items-center gap-2">
             <Bell className="h-5 w-5" /> Notifications
           </CardTitle>
-          <CardDescription>Manage your notification preferences (UI only, no backend logic yet).</CardDescription>
+          <CardDescription>Manage your notification preferences (UI only, settings saved in browser).</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between rounded-lg border p-4">
@@ -108,7 +140,7 @@ export default function SettingsPage() {
             <Switch
               id="email-notifications"
               checked={emailNotificationsEnabled}
-              onCheckedChange={setEmailNotificationsEnabled}
+              onCheckedChange={handleNotificationChange(setEmailNotificationsEnabled, 'emailNotificationsEnabled')}
               aria-label="Toggle email notifications"
             />
           </div>
@@ -122,7 +154,7 @@ export default function SettingsPage() {
             <Switch
               id="hearing-reminders"
               checked={hearingRemindersEnabled}
-              onCheckedChange={setHearingRemindersEnabled}
+              onCheckedChange={handleNotificationChange(setHearingRemindersEnabled, 'hearingRemindersEnabled')}
               aria-label="Toggle hearing reminder notifications"
               disabled={!emailNotificationsEnabled} 
             />
@@ -137,7 +169,7 @@ export default function SettingsPage() {
             <Switch
               id="case-updates"
               checked={caseUpdatesEnabled}
-              onCheckedChange={setCaseUpdatesEnabled}
+              onCheckedChange={handleNotificationChange(setCaseUpdatesEnabled, 'caseUpdatesEnabled')}
               aria-label="Toggle case update notifications"
               disabled={!emailNotificationsEnabled}
             />
@@ -145,7 +177,7 @@ export default function SettingsPage() {
         </CardContent>
          <CardFooter>
           <p className="text-xs text-muted-foreground">
-            Notification preferences are UI only for now and not saved.
+            Notification preferences are for UI demonstration and saved in your browser storage.
           </p>
         </CardFooter>
       </Card>
@@ -209,7 +241,7 @@ export default function SettingsPage() {
         <CardContent>
             <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
                 <AlertDialogTrigger asChild>
-                    <Button variant="destructive">Delete Account</Button>
+                    <Button variant="destructive" disabled={isDeleting}>Delete Account</Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                     <AlertDialogHeader>
@@ -220,8 +252,9 @@ export default function SettingsPage() {
                     </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleSimulatedDeleteAccount}>
+                    <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleSimulatedDeleteAccount} disabled={isDeleting} className={buttonVariants({variant: "destructive"})}>
+                        {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         Yes, delete account (simulated)
                     </AlertDialogAction>
                     </AlertDialogFooter>
@@ -234,10 +267,40 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
       
-      <div className="flex justify-end mt-8">
+      {/* <div className="flex justify-end mt-8">
         <Button disabled>Save All Settings</Button>
          <p className="text-xs text-muted-foreground ml-2 mt-1">Saving settings is not yet implemented globally.</p>
-      </div>
+      </div> */}
     </div>
   );
 }
+
+// Helper for buttonVariants in AlertDialogAction
+const buttonVariants = cva(
+  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        destructive:
+          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+        outline:
+          "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+        secondary:
+          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        ghost: "hover:bg-accent hover:text-accent-foreground",
+        link: "text-primary underline-offset-4 hover:underline",
+      },
+      size: {
+        default: "h-10 px-4 py-2",
+        sm: "h-9 rounded-md px-3",
+        lg: "h-11 rounded-md px-8",
+        icon: "h-10 w-10",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  }
+);

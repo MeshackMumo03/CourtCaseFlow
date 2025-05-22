@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { doc, getDoc, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, Timestamp, query, collection, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { CaseFile, UserProfile } from '@/types';
 import { useParams, useRouter } from 'next/navigation';
@@ -10,7 +10,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertTriangle, ArrowLeft, Edit3, FilePlus, Loader2, Tags, UploadCloud, User, Mail, Phone, Building, MapPin, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Edit3, FilePlus, Loader2, Tags, UploadCloud, User, Mail, Phone, Building, MapPin, ShieldCheck, Briefcase, CalendarCheck2, UserCircle2 } from 'lucide-react';
 import Link from 'next/link';
 import { DocumentUploadForm } from '@/components/documents/DocumentUploadForm';
 import { AiTaggingTool } from '@/components/documents/AiTaggingTool';
@@ -21,8 +21,11 @@ export default function CaseDetailPage() {
   const caseId = params.caseId as string;
   const router = useRouter();
   const { userProfile, loading: authLoading } = useAuth();
+  
   const [caseFile, setCaseFile] = useState<CaseFile | null>(null);
   const [lawyerProfile, setLawyerProfile] = useState<UserProfile | null>(null);
+  const [clientProfileForLawyerView, setClientProfileForLawyerView] = useState<UserProfile | null>(null); // For lawyer viewing client details
+  
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,7 +49,7 @@ export default function CaseDetailPage() {
         return;
     }
 
-    const fetchCaseAndLawyerDetails = async () => {
+    const fetchCaseAndAssociatedProfiles = async () => {
       try {
         setLoading(true);
         setError(null);
@@ -67,7 +70,8 @@ export default function CaseDetailPage() {
             const fetchedCaseFile = { id: caseDocSnap.id, ...data };
             setCaseFile(fetchedCaseFile);
 
-            if (fetchedCaseFile.lawyerUid) { // Fetch lawyer profile for both lawyer (self) and client
+            // Fetch lawyer profile (for both lawyer self-view and client view)
+            if (fetchedCaseFile.lawyerUid) {
               const lawyerDocRef = doc(db, 'users', fetchedCaseFile.lawyerUid);
               const lawyerDocSnap = await getDoc(lawyerDocRef);
               if (lawyerDocSnap.exists()) {
@@ -76,6 +80,17 @@ export default function CaseDetailPage() {
                 console.warn(`Lawyer profile not found for UID: ${fetchedCaseFile.lawyerUid}`);
               }
             }
+
+            // If current user is lawyer, try to fetch client's registered profile
+            if (userProfile.role === 'lawyer' && fetchedCaseFile.clientEmail) {
+              const clientQuery = query(collection(db, 'users'), where('email', '==', fetchedCaseFile.clientEmail), where('role', '==', 'client'));
+              const clientSnapshot = await getDocs(clientQuery);
+              if (!clientSnapshot.empty) {
+                const clientData = clientSnapshot.docs[0].data() as UserProfile;
+                setClientProfileForLawyerView({ ...clientData, uid: clientSnapshot.docs[0].id });
+              }
+            }
+
           } else {
             setError("Access Denied: You are not authorized to view this case.");
             setCaseFile(null);
@@ -91,7 +106,7 @@ export default function CaseDetailPage() {
       }
     };
 
-    fetchCaseAndLawyerDetails();
+    fetchCaseAndAssociatedProfiles();
   }, [caseId, userProfile, authLoading, router]);
 
   if (loading || authLoading) {
@@ -124,8 +139,6 @@ export default function CaseDetailPage() {
 
   const handleDocumentUploaded = (dataUri: string, fileName: string) => {
     setUploadedDocumentForTagging({ dataUri, name: fileName });
-    // Keep modal open, AI tagging tool will be displayed within or below it.
-    // Or, if AI tagging is separate, then: setShowUploadModal(false);
   };
 
 
@@ -139,8 +152,10 @@ export default function CaseDetailPage() {
         <CardHeader>
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
             <div>
-              <CardTitle className="text-3xl">{caseFile.caseNumber}</CardTitle>
-              <CardDescription>Client: {caseFile.clientName} ({caseFile.clientEmail})</CardDescription>
+              <CardTitle className="text-3xl flex items-center gap-2">
+                <Briefcase className="h-7 w-7 text-primary"/> {caseFile.caseNumber}
+              </CardTitle>
+              <CardDescription>Client for this case: {caseFile.clientName} ({caseFile.clientEmail})</CardDescription>
             </div>
             {isLawyerOwner && (
               <Button asChild variant="outline" className="print:hidden">
@@ -155,12 +170,13 @@ export default function CaseDetailPage() {
           <div><strong className="font-medium text-muted-foreground">Court:</strong> {caseFile.court}</div>
           <div>
             <strong className="font-medium text-muted-foreground">Status:</strong>{' '}
-            <Badge variant={caseFile.status === 'active' ? 'default' : caseFile.status === 'closed' ? 'destructive' : 'secondary'} className="capitalize">
+            <Badge variant={caseFile.status === 'active' ? 'default' : caseFile.status === 'closed' ? 'destructive' : caseFile.status === 'archived' ? 'outline' : 'secondary'} className="capitalize">
               {caseFile.status}
             </Badge>
           </div>
           {caseFile.hearingDate && (
-            <div>
+            <div className="flex items-center gap-1">
+              <CalendarCheck2 className="h-4 w-4 text-muted-foreground"/>
               <strong className="font-medium text-muted-foreground">Hearing Date:</strong>{' '}
               {caseFile.hearingDate instanceof Timestamp ? caseFile.hearingDate.toDate().toLocaleDateString() : new Date(caseFile.hearingDate).toLocaleDateString()}
             </div>
@@ -178,6 +194,7 @@ export default function CaseDetailPage() {
         </CardContent>
       </Card>
 
+      {/* Lawyer's Info Card (Visible to Client and Lawyer) */}
       {lawyerProfile && (
         <Card className="shadow-lg">
           <CardHeader>
@@ -220,7 +237,7 @@ export default function CaseDetailPage() {
                     </div>
                 )}
                 {lawyerProfile.lawFirmAddress && (
-                    <div className="flex items-start gap-2 md:col-span-2"> {/* Address can span full width if long */}
+                    <div className="flex items-start gap-2 md:col-span-2">
                         <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
                         <span className="whitespace-pre-line">{lawyerProfile.lawFirmAddress}</span>
                     </div>
@@ -240,6 +257,46 @@ export default function CaseDetailPage() {
                                 </Badge>
                             )}
                         </div>
+                    </div>
+                )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Client's Registered Info Card (Visible to Lawyer Owner) */}
+      {isLawyerOwner && clientProfileForLawyerView && (
+         <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+                <UserCircle2 className="h-6 w-6 text-primary" /> Registered Client Details
+            </CardTitle>
+            <CardDescription>Information from the client's CaseLink profile.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+             <div className="flex items-center gap-3">
+                <Avatar className="h-16 w-16">
+                    <AvatarImage src={clientProfileForLawyerView.photoURL || `https://placehold.co/100x100.png?text=${getInitials(clientProfileForLawyerView.displayName)}`} alt={clientProfileForLawyerView.displayName || "Client"} data-ai-hint="client avatar"/>
+                    <AvatarFallback>{getInitials(clientProfileForLawyerView.displayName)}</AvatarFallback>
+                </Avatar>
+                <div>
+                    <p className="text-xl font-semibold">{clientProfileForLawyerView.displayName}</p>
+                    {clientProfileForLawyerView.createdAt instanceof Timestamp && (
+                         <p className="text-sm text-muted-foreground">Joined: {clientProfileForLawyerView.createdAt.toDate().toLocaleDateString()}</p>
+                    )}
+                </div>
+             </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                {clientProfileForLawyerView.email && (
+                    <div className="flex items-center gap-2">
+                        <Mail className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <a href={`mailto:${clientProfileForLawyerView.email}`} className="hover:underline break-all">{clientProfileForLawyerView.email}</a>
+                    </div>
+                )}
+                {clientProfileForLawyerView.phoneNumber && (
+                    <div className="flex items-center gap-2">
+                        <Phone className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <span>{clientProfileForLawyerView.phoneNumber}</span>
                     </div>
                 )}
             </div>

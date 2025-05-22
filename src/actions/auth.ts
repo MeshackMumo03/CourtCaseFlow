@@ -67,11 +67,8 @@ export async function updateUserProfileDetails(
   try {
     const userDocRef = doc(db, 'users', uid);
     
-    // Explicitly type the object passed to updateDoc
     const updateData: { [key: string]: any } = { ...details };
     
-    // Filter out undefined values to prevent overwriting fields with undefined
-    // This is particularly important for PartialDeep types
     const filterUndefinedRecursively = (obj: any): any => {
       const newObj: Record<string, any> = {};
       for (const key in obj) {
@@ -88,10 +85,34 @@ export async function updateUserProfileDetails(
     
     const cleanedUpdateData = filterUndefinedRecursively(updateData);
     
+    // Handle LSK verification status update specifically based on LSK number changes
+    if (details.lskRegistrationNumber !== undefined) { // Check if lskRegistrationNumber is part of the update
+      if (details.lskRegistrationNumber) { // If it's being set or changed to a non-empty value
+        cleanedUpdateData.lskVerificationStatus = 'pending_review';
+      } else { // If it's being explicitly cleared
+        cleanedUpdateData.lskVerificationStatus = 'unverified';
+      }
+    }
+
+    // Handle Law Firm verification status update
+    let firmDetailsChanged = false;
+    if (details.lawFirmName !== undefined) {
+        firmDetailsChanged = true;
+    }
+    if (details.lawFirmAddress !== undefined) {
+        firmDetailsChanged = true;
+    }
+
+    if (firmDetailsChanged) {
+        if (details.lawFirmName || details.lawFirmAddress) { // If either firm name or address is being set/changed
+            cleanedUpdateData.lawFirmVerificationStatus = 'pending_review';
+        } else if (details.lawFirmName === '' && details.lawFirmAddress === '') { // If both are explicitly cleared
+            cleanedUpdateData.lawFirmVerificationStatus = 'unverified';
+        }
+    }
+    
     await updateDoc(userDocRef, cleanedUpdateData);
 
-    // Construct a partial profile to return for optimistic updates
-    // This should reflect the actual fields that were intended to be updated including statuses
     const updatedProfileFields: Partial<UserProfile> = {};
     if (details.displayName !== undefined) updatedProfileFields.displayName = details.displayName;
     if (details.phoneNumber !== undefined) updatedProfileFields.phoneNumber = details.phoneNumber;

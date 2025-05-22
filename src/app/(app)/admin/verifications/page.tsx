@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, AlertTriangle, CheckCircle, XCircle, ShieldQuestion, Search } from 'lucide-react';
+import { Loader2, AlertTriangle, CheckCircle, XCircle, ShieldQuestion, Search, UserCheck, UserX } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { updateUserVerificationStatusAction } from '@/actions/admin';
 
@@ -41,18 +41,19 @@ export default function AdminVerificationsPage() {
       });
       
       const lawyersToVerify = fetchedLawyers.filter(lawyer => 
-          (lawyer.lskVerificationStatus === 'pending_review' && lawyer.lskRegistrationNumber) || 
-          (lawyer.lawFirmVerificationStatus === 'pending_review' && (lawyer.lawFirmName || lawyer.lawFirmAddress))
+          (lawyer.lskVerificationStatus === 'pending_review' && lawyer.lskRegistrationNumber && lawyer.lskRegistrationNumber.trim() !== '') || 
+          (lawyer.lawFirmVerificationStatus === 'pending_review' && ((lawyer.lawFirmName && lawyer.lawFirmName.trim() !== '') || (lawyer.lawFirmAddress && lawyer.lawFirmAddress.trim() !== '')))
       );
 
       setPendingLawyers(lawyersToVerify);
     } catch (err) {
       console.error('Error fetching pending verifications:', err);
       setError('Failed to load users for verification.');
+      toast({ variant: 'destructive', title: 'Loading Error', description: 'Could not load users needing verification.' });
     } finally {
       setLoadingData(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     if (authLoading) {
@@ -64,10 +65,9 @@ export default function AdminVerificationsPage() {
       return;
     }
 
-    // This is the primary check for admin privileges
     if (adminUserProfile.email !== ADMIN_EMAIL) {
       setError(`Access Denied: User ${adminUserProfile.email} is not authorized for admin functions.`);
-      setLoadingData(false); // Stop loading if not admin
+      setLoadingData(false);
       return;
     }
     
@@ -87,6 +87,7 @@ export default function AdminVerificationsPage() {
 
     if (result.success) {
       toast({ title: 'Success', description: result.message });
+      // Update local state to reflect the change
       setPendingLawyers(prevLawyers => 
         prevLawyers.map(lawyer => {
           if (lawyer.uid === userId) {
@@ -97,9 +98,9 @@ export default function AdminVerificationsPage() {
             };
           }
           return lawyer;
-        }).filter(lawyer => 
-            (lawyer.lskVerificationStatus === 'pending_review' && lawyer.lskRegistrationNumber) || 
-            (lawyer.lawFirmVerificationStatus === 'pending_review' && (lawyer.lawFirmName || lawyer.lawFirmAddress))
+        }).filter(lawyer => // Re-filter the list to remove those no longer pending
+            (lawyer.lskVerificationStatus === 'pending_review' && lawyer.lskRegistrationNumber && lawyer.lskRegistrationNumber.trim() !== '') || 
+            (lawyer.lawFirmVerificationStatus === 'pending_review' && ((lawyer.lawFirmName && lawyer.lawFirmName.trim() !== '') || (lawyer.lawFirmAddress && lawyer.lawFirmAddress.trim() !== '')))
         )
       );
     } else {
@@ -131,7 +132,6 @@ export default function AdminVerificationsPage() {
     );
   }
   
-  // This check is redundant if the useEffect handles it, but serves as a final guard.
   if (adminUserProfile?.email !== ADMIN_EMAIL) {
      return (
       <div className="flex flex-1 flex-col items-center justify-center text-center p-6">
@@ -155,7 +155,7 @@ export default function AdminVerificationsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Pending Lawyer Verifications</CardTitle>
-          <CardDescription>Review and approve or reject LSK and Law Firm details submitted by lawyers. Admin user: {adminUserProfile.email}</CardDescription>
+          <CardDescription>Review and approve or reject LSK and Law Firm details submitted by lawyers. Logged in as: {adminUserProfile.email}</CardDescription>
         </CardHeader>
         <CardContent>
           {pendingLawyers.length === 0 ? (
@@ -211,7 +211,7 @@ export default function AdminVerificationsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right space-y-1 md:space-y-0 md:space-x-1">
-                      {lawyer.lskVerificationStatus === 'pending_review' && lawyer.lskRegistrationNumber && (
+                      {lawyer.lskVerificationStatus === 'pending_review' && lawyer.lskRegistrationNumber && lawyer.lskRegistrationNumber.trim() !== '' && (
                         <div className="flex flex-col sm:flex-row sm:justify-end sm:gap-1">
                           <Button
                             variant="outline"
@@ -220,7 +220,7 @@ export default function AdminVerificationsPage() {
                             disabled={isSubmitting[`${lawyer.uid}-lsk-verified`]}
                             className="text-xs"
                           >
-                            {isSubmitting[`${lawyer.uid}-lsk-verified`] ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3 mr-1" />} Approve LSK
+                            {isSubmitting[`${lawyer.uid}-lsk-verified`] ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserCheck className="h-3 w-3 mr-1" />} Approve LSK
                           </Button>
                           <Button
                             variant="destructive"
@@ -229,11 +229,11 @@ export default function AdminVerificationsPage() {
                             disabled={isSubmitting[`${lawyer.uid}-lsk-rejected`]}
                             className="text-xs"
                           >
-                             {isSubmitting[`${lawyer.uid}-lsk-rejected`] ? <Loader2 className="h-3 w-3 animate-spin" /> : <XCircle className="h-3 w-3 mr-1" />} Reject LSK
+                             {isSubmitting[`${lawyer.uid}-lsk-rejected`] ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3 mr-1" />} Reject LSK
                           </Button>
                         </div>
                       )}
-                       {lawyer.lawFirmVerificationStatus === 'pending_review' && (lawyer.lawFirmName || lawyer.lawFirmAddress) && (
+                       {lawyer.lawFirmVerificationStatus === 'pending_review' && ((lawyer.lawFirmName && lawyer.lawFirmName.trim() !== '') || (lawyer.lawFirmAddress && lawyer.lawFirmAddress.trim() !== '')) && (
                         <div className="flex flex-col sm:flex-row sm:justify-end sm:gap-1 mt-1 sm:mt-0">
                            <Button
                             variant="outline"
@@ -242,7 +242,7 @@ export default function AdminVerificationsPage() {
                             disabled={isSubmitting[`${lawyer.uid}-lawFirm-verified`]}
                             className="text-xs"
                           >
-                            {isSubmitting[`${lawyer.uid}-lawFirm-verified`] ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3 mr-1" />} Approve Firm
+                            {isSubmitting[`${lawyer.uid}-lawFirm-verified`] ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserCheck className="h-3 w-3 mr-1" />} Approve Firm
                           </Button>
                           <Button
                             variant="destructive"
@@ -251,7 +251,7 @@ export default function AdminVerificationsPage() {
                             disabled={isSubmitting[`${lawyer.uid}-lawFirm-rejected`]}
                             className="text-xs"
                           >
-                             {isSubmitting[`${lawyer.uid}-lawFirm-rejected`] ? <Loader2 className="h-3 w-3 animate-spin" /> : <XCircle className="h-3 w-3 mr-1" />} Reject Firm
+                             {isSubmitting[`${lawyer.uid}-lawFirm-rejected`] ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3 mr-1" />} Reject Firm
                           </Button>
                         </div>
                       )}

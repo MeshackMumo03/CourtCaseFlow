@@ -8,7 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
-import { Briefcase, FileText, Home, LogOut, Menu, PlusCircle, Settings, Users, ShieldCheck, CalendarDays, ShieldQuestion } from "lucide-react";
+import { Briefcase, FileText, Home, LogOut, Menu, PlusCircle, Settings, Users, ShieldCheck, CalendarDays, ShieldQuestion, Loader2 as IconLoader } from "lucide-react"; // Renamed Loader2 to avoid conflict
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import React from "react";
@@ -20,19 +20,19 @@ interface NavItem {
   href: string;
   label: string;
   icon: React.ElementType;
-  roles: Array<'lawyer' | 'client' | 'admin'>; // Added 'admin' role
+  roles: Array<'lawyer' | 'client' | 'admin'>; 
   disabled?: boolean;
-  adminOnly?: boolean; // New flag for admin-specific links
+  adminOnly?: boolean; 
 }
 
-const ADMIN_EMAIL = 'admin@caselink.com'; // Hardcoded admin email
+const ADMIN_EMAIL = 'admin@caselink.com'; 
 
 const navItems: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: Home, roles: ['lawyer', 'client', 'admin'] },
   { href: "/cases/create", label: "New Case", icon: PlusCircle, roles: ['lawyer'] },
   { href: "/cases", label: "All Cases", icon: Briefcase, roles: ['lawyer'] },
   { href: "/hearings", label: "Hearings", icon: CalendarDays, roles: ['lawyer', 'client', 'admin'] },
-  { href: "/clients", label: "Clients", icon: Users, roles: ['lawyer'], disabled: true },
+  // { href: "/clients", label: "Clients", icon: Users, roles: ['lawyer'], disabled: true }, // Example of a disabled link
   { href: "/dashboard/settings", label: "Settings", icon: Settings, roles: ['lawyer', 'client', 'admin'] },
   { href: "/admin/verifications", label: "Admin Verifications", icon: ShieldQuestion, roles: ['admin'], adminOnly: true },
 ];
@@ -65,13 +65,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   if (loading) {
     return (
       <div className="flex h-screen w-screen items-center justify-center">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <IconLoader className="h-12 w-12 animate-spin text-primary" />
       </div>
     );
   }
   
   if (!user || !userProfile) {
-    return null; 
+    // This case should ideally be handled by the useEffect redirecting to /login
+    // Adding a fallback just in case.
+    return (
+         <div className="flex h-screen w-screen items-center justify-center">
+            <IconLoader className="h-12 w-12 animate-spin text-primary" />
+            <p className="ml-2">Redirecting...</p>
+        </div>
+    ); 
   }
 
   const isAdmin = userProfile.email === ADMIN_EMAIL;
@@ -146,7 +153,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           <UserNav />
         </header>
-        <main className="flex-1 flex-col gap-4 p-4 lg:p-6 bg-background overflow-auto">
+        <main className="flex-1 flex flex-col gap-4 p-4 lg:p-6 bg-background overflow-auto">
           {children}
         </main>
       </div>
@@ -154,21 +161,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Loader2(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-    </svg>
-  )
-}
+// Loader2 component was removed as it was named IconLoader from lucide-react
+// If you need a specific Loader2 component, it should be defined elsewhere or imported.
+// For now, lucide-react's Loader2 is aliased as IconLoader to avoid naming conflicts.
