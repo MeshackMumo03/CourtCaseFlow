@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Loader2, Edit3, Save, Upload, Mail, Phone, Building, MapPin, UserCircle } from 'lucide-react'; // Added UserCircle
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, useRef, ChangeEvent } from 'react';
+import { useEffect, useState, useRef, ChangeEvent, useCallback } from 'react';
 import { updateUserProfileDetails } from '@/actions/auth';
 import { useToast } from '@/hooks/use-toast';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -19,6 +19,7 @@ import { auth, storage } from '@/lib/firebase';
 import type { UserProfile } from '@/types';
 import { Textarea } from '@/components/ui/textarea';
 import * as z from 'zod';
+import { Badge } from '@/components/ui/badge';
 
 const phoneRegex = new RegExp(
   /^([+]?[\s0-9]+)?(\d{3}|[(]?[0-9]+[)])?([-]?[\s]?[0-9])+$/
@@ -91,17 +92,15 @@ export default function ProfilePage() {
 
   const resetEditForm = () => {
     if (userProfile) {
-      populateFormFields(userProfile); // Use the central populating function
-      setProfilePictureFile(null); // Clear file selection
-      // profilePicturePreview is already reset by populateFormFields
-      setCurrentPasswordForEmailChange(''); // Clear password field
+      populateFormFields(userProfile); 
+      setProfilePictureFile(null); 
+      setCurrentPasswordForEmailChange(''); 
     }
   }
 
   const handleSaveProfile = async () => {
     if (!user || !userProfile) return;
 
-    // Create a snapshot of the current state for comparison
     const initialProfileState = {
       displayName: userProfile.displayName || '',
       phoneNumber: userProfile.phoneNumber || '',
@@ -135,50 +134,58 @@ export default function ProfilePage() {
     if (userProfile.role === 'lawyer') {
       if (lawFirmName !== initialProfileState.lawFirmName) {
         detailsToUpdate.lawFirmName = lawFirmName;
-        firmStatusUpdate = 'pending_review';
+        if (lawFirmName) firmStatusUpdate = 'pending_review'; else firmStatusUpdate = 'unverified';
       }
       if (lawFirmAddress !== initialProfileState.lawFirmAddress) {
         detailsToUpdate.lawFirmAddress = lawFirmAddress;
-        firmStatusUpdate = 'pending_review';
+        if (lawFirmAddress) firmStatusUpdate = 'pending_review'; else firmStatusUpdate = 'unverified';
       }
       if (lskRegistrationNumber !== initialProfileState.lskRegistrationNumber) {
         detailsToUpdate.lskRegistrationNumber = lskRegistrationNumber;
-        if(lskRegistrationNumber) { // Only trigger review if a number is provided
+        if(lskRegistrationNumber) { 
             lskStatusUpdate = 'pending_review';
-        } else { // If cleared, revert to unverified
+        } else { 
             lskStatusUpdate = 'unverified';
         }
       }
     }
+
     if (lskStatusUpdate) detailsToUpdate.lskVerificationStatus = lskStatusUpdate;
+    else if (userProfile.role === 'lawyer' && initialProfileState.lskRegistrationNumber && !lskRegistrationNumber) {
+      // Case where LSK number was cleared
+      detailsToUpdate.lskVerificationStatus = 'unverified';
+    }
+
+
     if (firmStatusUpdate) detailsToUpdate.lawFirmVerificationStatus = firmStatusUpdate;
+    else if (userProfile.role === 'lawyer' && 
+             ((initialProfileState.lawFirmName && !lawFirmName) || (initialProfileState.lawFirmAddress && !lawFirmAddress)) &&
+             !lawFirmName && !lawFirmAddress 
+            ) {
+        // Case where both firm name and address were cleared
+        detailsToUpdate.lawFirmVerificationStatus = 'unverified';
+    }
+
 
     setIsSaving(true);
 
     try {
-      let newPhotoURL = profilePicturePreview; // Start with current preview or existing URL
+      let newPhotoURL = profilePicturePreview; 
       if (profilePictureFile) {
         const filePath = `profile-pictures/${user.uid}/${profilePictureFile.name}`;
         const fileStorageRef = storageRef(storage, filePath);
         await uploadBytes(fileStorageRef, profilePictureFile);
         newPhotoURL = await getDownloadURL(fileStorageRef);
         detailsToUpdate.photoURL = newPhotoURL;
-      } else if (profilePicturePreview !== initialProfileState.photoURL) {
-        // This case covers if the preview was cleared or changed without a new file (e.g. to default)
-        // Though typically clearing would mean setting photoURL to null/undefined in detailsToUpdate
-        // For now, if profilePictureFile is null, photoURL changes are handled if detailsToUpdate.photoURL is set
       }
-
-
+      
       const authProfileUpdates: { displayName?: string; photoURL?: string } = {};
       if (detailsToUpdate.displayName && detailsToUpdate.displayName !== user.displayName) {
         authProfileUpdates.displayName = detailsToUpdate.displayName;
       }
-      // Use the potentially updated newPhotoURL for Firebase Auth profile
       if (detailsToUpdate.photoURL && detailsToUpdate.photoURL !== user.photoURL) {
         authProfileUpdates.photoURL = detailsToUpdate.photoURL;
       } else if (newPhotoURL !== user.photoURL && !detailsToUpdate.photoURL && profilePictureFile) {
-        // If photoURL was updated via profilePictureFile but not explicitly in detailsToUpdate yet
         authProfileUpdates.photoURL = newPhotoURL;
       }
 
@@ -192,7 +199,15 @@ export default function ProfilePage() {
         if (!result.success || !result.updatedProfile) {
           throw new Error(result.message || 'Failed to update profile in database.');
         }
-        setUserProfile(prev => prev ? { ...prev, ...result.updatedProfile } : null);
+        setUserProfile(prev => {
+          if (!prev) return null;
+          // Create a new object for the updated profile
+          const updatedFirestoreProfile = { ...prev, ...result.updatedProfile };
+          // Ensure auth updates are also reflected if they weren't part of result.updatedProfile
+          if (authProfileUpdates.displayName) updatedFirestoreProfile.displayName = authProfileUpdates.displayName;
+          if (authProfileUpdates.photoURL) updatedFirestoreProfile.photoURL = authProfileUpdates.photoURL;
+          return updatedFirestoreProfile;
+        });
       } else if (Object.keys(authProfileUpdates).length > 0) {
          setUserProfile(prev => {
             if (!prev) return null;
@@ -242,9 +257,9 @@ export default function ProfilePage() {
     try {
       const credential = EmailAuthProvider.credential(user.email, currentPasswordForEmailChange);
       await reauthenticateWithCredential(user, credential);
-      await updateFirebaseAuthEmail(user, newEmail); // Update Firebase Auth email
+      await updateFirebaseAuthEmail(user, newEmail); 
 
-      const result = await updateUserProfileDetails(user.uid, { email: newEmail }); // Update Firestore email
+      const result = await updateUserProfileDetails(user.uid, { email: newEmail }); 
       if (!result.success || !result.updatedProfile) {
         console.error('Firebase Auth email updated, but Firestore update failed for email.');
         throw new Error(result.message || 'Failed to update email in database. Auth email changed but profile database may be out of sync.');
@@ -252,7 +267,7 @@ export default function ProfilePage() {
 
       setUserProfile(prev => prev ? { ...prev, email: newEmail, ...result.updatedProfile } : null);
       toast({ title: 'Email Updated Successfully', description: 'Your email address has been changed. You may need to log in again with your new email.' });
-      setCurrentPasswordForEmailChange(''); // Clear password field
+      setCurrentPasswordForEmailChange(''); 
 
     } catch (error: any) {
       console.error('Error updating email:', error);
@@ -445,8 +460,8 @@ export default function ProfilePage() {
                     )}
                 </div>
                 <div className="space-y-1 text-sm">
-                    <p>LSK Status: <Badge variant={userProfile.lskVerificationStatus === 'verified' ? 'default' : userProfile.lskVerificationStatus === 'pending_review' ? 'secondary' : userProfile.lskVerificationStatus === 'rejected' ? 'destructive': 'outline'} className="capitalize">{userProfile.lskVerificationStatus?.replace('_', ' ') || 'Unverified'}</Badge></p>
-                    <p>Firm Status: <Badge variant={userProfile.lawFirmVerificationStatus === 'verified' ? 'default' : userProfile.lawFirmVerificationStatus === 'pending_review' ? 'secondary' : userProfile.lawFirmVerificationStatus === 'rejected' ? 'destructive' : 'outline'} className="capitalize">{userProfile.lawFirmVerificationStatus?.replace('_', ' ') || 'Unverified'}</Badge></p>
+                    <div className="flex items-center gap-1">LSK Status: <Badge variant={userProfile.lskVerificationStatus === 'verified' ? 'default' : userProfile.lskVerificationStatus === 'pending_review' ? 'secondary' : userProfile.lskVerificationStatus === 'rejected' ? 'destructive': 'outline'} className="capitalize">{userProfile.lskVerificationStatus?.replace('_', ' ') || 'Unverified'}</Badge></div>
+                    <div className="flex items-center gap-1">Firm Status: <Badge variant={userProfile.lawFirmVerificationStatus === 'verified' ? 'default' : userProfile.lawFirmVerificationStatus === 'pending_review' ? 'secondary' : userProfile.lawFirmVerificationStatus === 'rejected' ? 'destructive' : 'outline'} className="capitalize">{userProfile.lawFirmVerificationStatus?.replace('_', ' ') || 'Unverified'}</Badge></div>
                 </div>
                  {(userProfile.lskVerificationStatus === 'pending_review' || userProfile.lawFirmVerificationStatus === 'pending_review') && isEditing && (
                     <p className="text-xs text-muted-foreground">Changes to LSK number or law firm details will reset verification status to 'Pending Review'.</p>
@@ -455,7 +470,7 @@ export default function ProfilePage() {
           )}
         </CardContent>
         <CardFooter className="flex justify-end gap-2">
-          {isEditing && ( // Only show Save/Cancel when editing
+          {isEditing && ( 
             <>
               <Button variant="outline" onClick={() => { 
                   setIsEditing(false); 
@@ -472,7 +487,7 @@ export default function ProfilePage() {
         </CardFooter>
       </Card>
 
-      {isEditing && ( // Show email change form only when main profile editing is active
+      {isEditing && ( 
         <Card className="max-w-2xl mx-auto mt-6">
             <CardHeader>
                 <CardTitle>Change Email Address</CardTitle>
@@ -515,7 +530,3 @@ export default function ProfilePage() {
     </div>
   );
 }
-
-// Added useCallback to satisfy ESLint exhaustive-deps for useEffect
-import { useCallback } from 'react';
-import { Badge } from '@/components/ui/badge';
