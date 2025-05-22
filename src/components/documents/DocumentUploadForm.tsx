@@ -23,8 +23,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { useState }
-from 'react';
+import { useState } from 'react';
 import { Loader2, UploadCloud } from 'lucide-react';
 // import { uploadDocumentAction } from '@/actions/documents'; // Placeholder for actual upload server action
 
@@ -39,8 +38,11 @@ const uploadFormSchema = z.object({
       (files) => ALLOWED_FILE_TYPES.includes(files?.[0]?.type),
       "Only .pdf, .doc, .docx, .jpg, .png files are allowed."
     ),
-  description: z.string().optional(), // Optional description for the AI
+  description: z.string().optional(),
 });
+
+// Define the type for form values
+type UploadFormValues = z.infer<typeof uploadFormSchema>;
 
 interface DocumentUploadFormProps {
   caseId: string;
@@ -52,59 +54,64 @@ export function DocumentUploadForm({ caseId, onClose, onDocumentUploaded }: Docu
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
-  const form = useForm<z.infer<typeof uploadFormSchema>>({
+  const form = useForm<UploadFormValues>({ // Use the defined type here
     resolver: zodResolver(uploadFormSchema),
     defaultValues: {
-      document: undefined, // react-hook-form handles file inputs; undefined is fine for reset
-      description: '', // Initialize description to an empty string
+      document: undefined,
+      description: '',
     },
   });
 
-  const onSubmit = async (values: z.infer<typeof uploadFormSchema>>) => {
+  // Corrected onSubmit function signature using the UploadFormValues type
+  const onSubmit = async (values: UploadFormValues) => {
     setIsLoading(true);
+    // Ensure values.document is not null and has at least one file
+    if (!values.document || values.document.length === 0) {
+        toast({ variant: 'destructive', title: 'File Error', description: 'No file selected.' });
+        setIsLoading(false);
+        return;
+    }
     const file = values.document[0];
 
     try {
-      // Convert file to Data URI for AI processing
       const reader = new FileReader();
+      
       reader.onloadend = async () => {
-        const dataUri = reader.result as string;
-        
-        // Here, you would normally call a server action to upload the file to Firebase Storage
-        // and save metadata to Firestore. For this demo, we'll just pass the data URI.
-        // Example: const result = await uploadDocumentAction(caseId, file.name, dataUri, values.description);
-        // if (result.success) { ... }
+        try {
+          const dataUri = reader.result as string;
+          
+          toast({
+            title: 'File Processed for Tagging',
+            description: `${file.name} is ready for AI tag suggestions.`,
+          });
+          onDocumentUploaded(dataUri, file.name); 
+          form.reset(); 
+        } catch (innerError) {
+          console.error('Error in reader.onloadend:', innerError);
+          toast({ variant: 'destructive', title: 'Processing Error', description: 'Failed to process file data.' });
+        } finally {
+          setIsLoading(false); // Ensure loading is stopped after onloadend processing
+        }
+      };
 
-        toast({
-          title: 'File Processed for Tagging',
-          description: `${file.name} is ready for AI tag suggestions.`,
-        });
-        onDocumentUploaded(dataUri, file.name); // Pass data URI and name to parent
-        form.reset(); 
-        // The parent component (CaseDetailPage) is responsible for deciding whether to close 
-        // the modal or show the AiTaggingTool.
-        // If AiTaggingTool is shown within this dialog structure, onClose might not be called immediately.
-        // If onDocumentUploaded leads to unmounting or re-rendering that shows AiTaggingTool elsewhere,
-        // then onClose might be appropriate here or handled by the parent.
-      };
       reader.onerror = () => {
-        toast({ variant: 'destructive', title: 'Error', description: 'Failed to read file.' });
-        setIsLoading(false);
+        toast({ variant: 'destructive', title: 'File Read Error', description: 'Failed to read file.' });
+        setIsLoading(false); 
       };
+
       reader.readAsDataURL(file);
 
     } catch (error) {
       console.error('Upload error:', error);
       toast({ variant: 'destructive', title: 'Upload Failed', description: 'Could not process the file.' });
-      setIsLoading(false);
+      setIsLoading(false); 
     }
-    // setIsLoading(false) is handled within reader.onloadend or reader.onerror for async operations
   };
 
   return (
     <Dialog open={true} onOpenChange={(open) => {
       if (!open) {
-        form.reset(); // Reset form when dialog is closed
+        form.reset(); 
         onClose();
       }
     }}>
@@ -120,13 +127,15 @@ export function DocumentUploadForm({ caseId, onClose, onDocumentUploaded }: Docu
             <FormField
               control={form.control}
               name="document"
-              render={({ field: { onChange, value, ...rest } }) => (
+              render={({ field: { onChange, ...rest } }) => (
                 <FormItem>
                   <FormLabel>Document File</FormLabel>
                   <FormControl>
                     <Input 
                       type="file" 
-                      onChange={(e) => onChange(e.target.files)}
+                      onChange={(e) => {
+                        onChange(e.target.files);
+                      }}
                       {...rest} 
                       className="pt-2 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
                     />
@@ -152,7 +161,7 @@ export function DocumentUploadForm({ caseId, onClose, onDocumentUploaded }: Docu
               <Button type="button" variant="outline" onClick={() => { form.reset(); onClose();}} disabled={isLoading}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={isLoading}>
+              <Button type="submit" disabled={isLoading || !form.formState.isDirty || !form.formState.isValid}>
                 {isLoading ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
