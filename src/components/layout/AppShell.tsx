@@ -1,3 +1,4 @@
+
 "use client";
 
 import { Logo } from "@/components/Logo";
@@ -7,7 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
-import { Briefcase, FileText, Home, LogOut, Menu, PlusCircle, Settings, Users, ShieldCheck, CalendarDays } from "lucide-react";
+import { Briefcase, FileText, Home, LogOut, Menu, PlusCircle, Settings, Users, ShieldCheck, CalendarDays, ShieldQuestion } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import React from "react";
@@ -19,18 +20,21 @@ interface NavItem {
   href: string;
   label: string;
   icon: React.ElementType;
-  roles: Array<'lawyer' | 'client'>;
+  roles: Array<'lawyer' | 'client' | 'admin'>; // Added 'admin' role
   disabled?: boolean;
+  adminOnly?: boolean; // New flag for admin-specific links
 }
 
+const ADMIN_EMAIL = 'admin@caselink.com'; // Hardcoded admin email
+
 const navItems: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: Home, roles: ['lawyer', 'client'] },
+  { href: "/dashboard", label: "Dashboard", icon: Home, roles: ['lawyer', 'client', 'admin'] },
   { href: "/cases/create", label: "New Case", icon: PlusCircle, roles: ['lawyer'] },
-  { href: "/cases", label: "All Cases", icon: Briefcase, roles: ['lawyer'] }, // Clients see assigned cases on dashboard
-  // { href: "/documents", label: "Documents", icon: FileText, roles: ['lawyer', 'client'] }, // maybe integrated into cases
-  { href: "/hearings", label: "Hearings", icon: CalendarDays, roles: ['lawyer', 'client'] },
-  { href: "/clients", label: "Clients", icon: Users, roles: ['lawyer'], disabled: true }, // Example of future item
-  { href: "/settings", label: "Settings", icon: Settings, roles: ['lawyer', 'client'], disabled: true },
+  { href: "/cases", label: "All Cases", icon: Briefcase, roles: ['lawyer'] },
+  { href: "/hearings", label: "Hearings", icon: CalendarDays, roles: ['lawyer', 'client', 'admin'] },
+  { href: "/clients", label: "Clients", icon: Users, roles: ['lawyer'], disabled: true },
+  { href: "/dashboard/settings", label: "Settings", icon: Settings, roles: ['lawyer', 'client', 'admin'] },
+  { href: "/admin/verifications", label: "Admin Verifications", icon: ShieldQuestion, roles: ['admin'], adminOnly: true },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -67,11 +71,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
   
   if (!user || !userProfile) {
-    // This should ideally not be reached if useEffect redirect works, but as a fallback.
     return null; 
   }
 
-  const accessibleNavItems = navItems.filter(item => item.roles.includes(userProfile.role) && !item.disabled);
+  const isAdmin = userProfile.email === ADMIN_EMAIL;
+  const currentUserRole = isAdmin ? 'admin' : userProfile.role;
+
+  const accessibleNavItems = navItems.filter(item => 
+    item.roles.includes(currentUserRole) && 
+    !item.disabled &&
+    (item.adminOnly ? isAdmin : true)
+  );
 
   const SidebarContent = () => (
     <>
