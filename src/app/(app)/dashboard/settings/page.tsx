@@ -1,7 +1,7 @@
 
 'use client';
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button"; // Ensure buttonVariants is imported if needed, or cva if buttonVariants is defined locally
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
+import { cva } from "class-variance-authority"; // Added import for cva
 
 export default function SettingsPage() {
   const { userProfile, loading: authLoading, setUserProfile } = useAuth();
@@ -253,7 +254,7 @@ export default function SettingsPage() {
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                     <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleSimulatedDeleteAccount} disabled={isDeleting} className={buttonVariants({variant: "destructive"})}>
+                    <AlertDialogAction onClick={handleSimulatedDeleteAccount} disabled={isDeleting} className={localButtonVariants({variant: "destructive"})}>
                         {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         Yes, delete account (simulated)
                     </AlertDialogAction>
@@ -276,7 +277,8 @@ export default function SettingsPage() {
 }
 
 // Helper for buttonVariants in AlertDialogAction
-const buttonVariants = cva(
+// Renamed to localButtonVariants to avoid conflict if buttonVariants is also imported from ui/button
+const localButtonVariants = cva(
   "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
@@ -304,3 +306,5 @@ const buttonVariants = cva(
     },
   }
 );
+
+
