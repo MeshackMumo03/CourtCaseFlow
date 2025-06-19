@@ -23,7 +23,7 @@ export function AuthRedirect() {
     <div className="flex min-h-screen flex-col items-center justify-center">
       <Skeleton className="h-12 w-12 rounded-full bg-primary/20" />
       <Skeleton className="mt-4 h-4 w-48 bg-primary/20" />
-      <p className="mt-2 text-muted-foreground">Loading CaseLink...</p>
+      <p className="mt-2 text-muted-foreground">Loading CourtCaseFlow...</p>
     </div>
   );
 }

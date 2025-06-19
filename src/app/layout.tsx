@@ -17,7 +17,7 @@ const geistSans = Geist({
 // });
 
 export const metadata: Metadata = {
-  title: 'CaseLink',
+  title: 'CourtCaseFlow',
   description: 'Secure legal case management for small law firms.',
 };
 

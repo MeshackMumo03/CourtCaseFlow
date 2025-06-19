@@ -113,7 +113,7 @@ export function SignupForm() {
     <Card className="w-full">
       <CardHeader>
         <CardTitle className="text-2xl">Create an Account</CardTitle>
-        <CardDescription>Enter your details to get started with CaseLink.</CardDescription>
+        <CardDescription>Enter your details to get started with CourtCaseFlow.</CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
