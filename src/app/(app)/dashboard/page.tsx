@@ -1,30 +1,97 @@
+
 "use client";
 
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { PlusCircle, Briefcase, Eye, Loader2 } from "lucide-react";
+import { PlusCircle, Briefcase, Eye, Loader2, Users, UserCheck, ShieldQuestion, UserCog, Building, UserCircle2 } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useState, useCallback } from "react";
+import { collection, query, where, getDocs, Timestamp, orderBy } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import type { CaseFile, UserProfile } from '@/types';
 import Image from "next/image";
 
-// Dummy data for cases - replace with actual Firestore fetching
-const lawyerCases = [
-  { id: "1", caseNumber: "L-2023-001", clientName: "Alice Wonderland", status: "active", hearingDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000) },
-  { id: "2", caseNumber: "L-2023-002", clientName: "Bob The Builder", status: "pending" },
-  { id: "3", caseNumber: "L-2022-050", clientName: "Charlie Brown", status: "closed", hearingDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
-];
-
-const clientCases = [
-  { id: "1", caseNumber: "C-2023-001", clientName: "Self", status: "active", lawyerName: "John Doe", hearingDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
-];
+const ADMIN_EMAIL = 'admin@caselink.com';
 
 export default function DashboardPage() {
   const { userProfile, loading } = useAuth();
+  const [dashboardData, setDashboardData] = useState<any>(null);
+  const [dataLoading, setDataLoading] = useState(true);
 
-  if (loading) {
+  const isAdmin = userProfile?.email === ADMIN_EMAIL;
+
+  const fetchLawyerClientData = useCallback(async () => {
+    if (!userProfile) return;
+    setDataLoading(true);
+    try {
+      let q;
+      if (userProfile.role === 'lawyer') {
+        q = query(collection(db, 'cases'), where('lawyerUid', '==', userProfile.uid), orderBy('createdAt', 'desc'));
+      } else { // client
+        q = query(collection(db, 'cases'), where('clientEmail', '==', userProfile.email), orderBy('createdAt', 'desc'));
+      }
+      const querySnapshot = await getDocs(q);
+      const cases: CaseFile[] = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CaseFile));
+
+      const activeCases = cases.filter(c => c.status === 'active').length;
+      const upcomingHearings = cases.filter(c => c.hearingDate && c.hearingDate.toMillis() > Date.now()).length;
+      const totalDocuments = (await Promise.all(cases.map(c => getDocs(collection(db, 'cases', c.id, 'documents'))))).reduce((acc, snap) => acc + snap.size, 0);
+
+      setDashboardData({
+        cases: cases.slice(0, 5),
+        stats: { activeCases, upcomingHearings, totalDocuments }
+      });
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error);
+      setDashboardData({ cases: [], stats: { activeCases: 0, upcomingHearings: 0, totalDocuments: 0 } });
+    } finally {
+      setDataLoading(false);
+    }
+  }, [userProfile]);
+
+  const fetchAdminData = useCallback(async () => {
+    setDataLoading(true);
+    try {
+      const usersSnapshot = await getDocs(collection(db, 'users'));
+      const allUsers = usersSnapshot.docs.map(doc => doc.data() as UserProfile);
+      
+      const totalUsers = allUsers.length;
+      const totalLawyers = allUsers.filter(u => u.role === 'lawyer').length;
+      const totalClients = allUsers.filter(u => u.role === 'client').length;
+      
+      const pendingLawyers = allUsers.filter(u => u.role === 'lawyer' && (u.lskVerificationStatus === 'pending_review' || u.lawFirmVerificationStatus === 'pending_review')).length;
+      
+      const casesSnapshot = await getDocs(collection(db, 'cases'));
+      const totalCases = casesSnapshot.size;
+
+      setDashboardData({
+        stats: { totalUsers, totalLawyers, totalClients, pendingVerifications: pendingLawyers, totalCases }
+      });
+
+    } catch (error) {
+      console.error("Error fetching admin data:", error);
+      setDashboardData({ stats: { totalUsers: 0, totalLawyers: 0, totalClients: 0, pendingVerifications: 0, totalCases: 0 } });
+    } finally {
+      setDataLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!loading && userProfile) {
+      if (isAdmin) {
+        fetchAdminData();
+      } else {
+        fetchLawyerClientData();
+      }
+    }
+  }, [userProfile, loading, isAdmin, fetchAdminData, fetchLawyerClientData]);
+
+  if (loading || dataLoading) {
     return (
       <div className="flex flex-1 items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+         <span className="ml-2">Loading Dashboard...</span>
       </div>
     );
   }
@@ -36,10 +103,80 @@ export default function DashboardPage() {
       </div>
     );
   }
+  
+  // ADMIN DASHBOARD VIEW
+  if (isAdmin) {
+    const { stats } = dashboardData;
+    return (
+      <div className="flex-1 space-y-6">
+        <div className="flex items-center justify-between">
+            <h1 className="text-3xl font-bold tracking-tight">Admin Dashboard</h1>
+            <UserCog className="h-8 w-8 text-primary" />
+        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Welcome, Admin!</CardTitle>
+            <CardDescription>
+              Here's a high-level overview of the CourtCaseFlow platform.
+            </CardDescription>
+          </CardHeader>
+        </Card>
 
-  const upcomingHearings = (userProfile.role === 'lawyer' ? lawyerCases : clientCases)
-    .filter(c => c.hearingDate && c.hearingDate > new Date())
-    .sort((a,b) => a.hearingDate!.getTime() - b.hearingDate!.getTime());
+        {/* Admin Stats */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Pending Verifications</CardTitle>
+              <ShieldQuestion className="h-5 w-5 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.pendingVerifications}</div>
+              <p className="text-xs text-muted-foreground">Lawyers awaiting approval</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Users</CardTitle>
+              <Users className="h-5 w-5 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.totalUsers}</div>
+              <p className="text-xs text-muted-foreground">{stats.totalLawyers} Lawyers, {stats.totalClients} Clients</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Cases</CardTitle>
+              <Briefcase className="h-5 w-5 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.totalCases}</div>
+              <p className="text-xs text-muted-foreground">Cases created on the platform</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Admin Quick Actions */}
+        <Card>
+            <CardHeader>
+                <CardTitle>Quick Actions</CardTitle>
+                <CardDescription>Navigate to key administrative areas.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <Button asChild>
+                    <Link href="/admin/verifications">
+                        <UserCheck className="mr-2 h-5 w-5" /> Review Pending Verifications
+                    </Link>
+                </Button>
+            </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // LAWYER & CLIENT DASHBOARD VIEW
+  const { cases, stats } = dashboardData;
+  const upcomingHearings = cases.filter((c: CaseFile) => c.hearingDate && c.hearingDate.toMillis() > Date.now());
 
   return (
     <div className="flex-1 space-y-6">
@@ -54,7 +191,6 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Welcome Message */}
       <Card>
         <CardHeader>
           <CardTitle>Welcome, {userProfile.displayName}!</CardTitle>
@@ -66,7 +202,6 @@ export default function DashboardPage() {
         </CardHeader>
       </Card>
 
-      {/* Overview Stats (Example) */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -74,9 +209,7 @@ export default function DashboardPage() {
             <Briefcase className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {userProfile.role === 'lawyer' ? lawyerCases.filter(c => c.status === 'active').length : clientCases.filter(c => c.status === 'active').length}
-            </div>
+            <div className="text-2xl font-bold">{stats.activeCases}</div>
             <p className="text-xs text-muted-foreground">
               Currently managed active cases
             </p>
@@ -90,39 +223,38 @@ export default function DashboardPage() {
           <CardContent>
              <div className="text-2xl font-bold">{upcomingHearings.length}</div>
             <p className="text-xs text-muted-foreground">
-              Scheduled in the next 30 days
+              Cases with a scheduled hearing date
             </p>
           </CardContent>
         </Card>
          <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Documents</CardTitle>
-            <FileText className="h-5 w-5 text-muted-foreground" />
+            <Briefcase className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-             <div className="text-2xl font-bold">15</div> {/* Placeholder */}
+             <div className="text-2xl font-bold">{stats.totalDocuments}</div>
             <p className="text-xs text-muted-foreground">
-              Documents uploaded across all cases
+              Uploaded across all your cases
             </p>
           </CardContent>
         </Card>
       </div>
       
-      {/* Case List Preview */}
       <Card>
         <CardHeader>
           <CardTitle>{userProfile.role === "lawyer" ? "Recent Cases" : "Your Cases"}</CardTitle>
-          <CardDescription>A quick overview of your cases.</CardDescription>
+          <CardDescription>A quick overview of your most recently updated cases.</CardDescription>
         </CardHeader>
         <CardContent>
-          {(userProfile.role === 'lawyer' ? lawyerCases.slice(0,3) : clientCases.slice(0,3)).length > 0 ? (
+          {cases.length > 0 ? (
             <ul className="space-y-3">
-              {(userProfile.role === 'lawyer' ? lawyerCases.slice(0,3) : clientCases.slice(0,3)).map((caseItem) => (
+              {cases.map((caseItem: CaseFile) => (
                 <li key={caseItem.id} className="flex items-center justify-between p-3 rounded-md border hover:bg-accent/50">
                   <div>
                     <p className="font-semibold">{caseItem.caseNumber} - {caseItem.clientName}</p>
                     <p className="text-sm text-muted-foreground">Status: <span className="capitalize">{caseItem.status}</span></p>
-                    {caseItem.hearingDate && <p className="text-sm text-muted-foreground">Next Hearing: {caseItem.hearingDate.toLocaleDateString()}</p>}
+                    {caseItem.hearingDate && <p className="text-sm text-muted-foreground">Next Hearing: {caseItem.hearingDate.toDate().toLocaleDateString()}</p>}
                   </div>
                   <Button variant="outline" size="sm" asChild>
                     <Link href={`/cases/${caseItem.id}`}>View</Link>
@@ -149,25 +281,4 @@ export default function DashboardPage() {
   );
 }
 
-function FileText(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-      <polyline points="14 2 14 8 20 8" />
-      <line x1="16" x2="8" y1="13" y2="13" />
-      <line x1="16" x2="8" y1="17" y2="17" />
-      <line x1="10" x2="8" y1="9" y2="9" />
-    </svg>
-  )
-}
+    
