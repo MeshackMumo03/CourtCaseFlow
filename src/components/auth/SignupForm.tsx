@@ -36,7 +36,7 @@ const formSchema = z.object({
   displayName: z.string().min(2, { message: "Display name must be at least 2 characters." }),
   email: z.string().email({ message: "Invalid email address." }),
   password: z.string().min(6, { message: "Password must be at least 6 characters." }),
-  phoneNumber: z.string().regex(phoneRegex, 'Invalid phone number').min(10, {message: "Phone number must be at least 10 digits."}).optional().or(z.literal('')),
+  phoneNumber: z.string().regex(phoneRegex, 'Invalid phone number').min(10, {message: "Phone number must be at least 10 digits."}),
   role: z.enum(["lawyer", "client"], { required_error: "You need to select a role." }),
   // Lawyer specific fields
   lawFirmName: z.string().optional(),
@@ -208,7 +208,7 @@ export function SignupForm() {
               name="phoneNumber"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Phone Number (Optional)</FormLabel>
+                  <FormLabel>Phone Number</FormLabel>
                   <FormControl>
                     <div className="relative">
                         <Input type="tel" placeholder="e.g., +1 555 123 4567" {...field} />
