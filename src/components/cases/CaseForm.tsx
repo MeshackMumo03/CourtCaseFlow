@@ -27,14 +27,15 @@ import { Calendar } from '@/components/ui/calendar';
 import { CalendarIcon, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { createCaseAction, updateCaseAction } from '@/actions/cases'; 
-import type { CaseFile } from '@/types';
+import type { CaseFile, UserProfile } from '@/types';
 import { useAuth } from '@/hooks/use-auth';
 import { Timestamp } from 'firebase/firestore';
+import { Combobox } from '@/components/ui/combobox';
 
 
 const caseFormSchema = z.object({
@@ -52,13 +53,21 @@ type CaseFormValues = z.infer<typeof caseFormSchema>;
 interface CaseFormProps {
   initialData?: CaseFile; // For editing
   caseId?: string;
+  clients?: Pick<UserProfile, 'uid' | 'displayName' | 'email'>[];
 }
 
-export function CaseForm({ initialData, caseId }: CaseFormProps) {
+export function CaseForm({ initialData, caseId, clients = [] }: CaseFormProps) {
   const { userProfile } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const router = useRouter();
+
+  const isEditMode = !!initialData;
+
+  const clientOptions = clients.map(client => ({
+    value: client.email!,
+    label: `${client.displayName} (${client.email})`
+  }));
 
   const form = useForm<CaseFormValues>({
     resolver: zodResolver(caseFormSchema),
@@ -77,6 +86,14 @@ export function CaseForm({ initialData, caseId }: CaseFormProps) {
           hearingDate: null,
         },
   });
+
+  const handleClientSelect = (email: string) => {
+    const selectedClient = clients.find(c => c.email === email);
+    if (selectedClient) {
+        form.setValue('clientEmail', selectedClient.email || '', { shouldValidate: true });
+        form.setValue('clientName', selectedClient.displayName || '', { shouldValidate: true });
+    }
+  }
 
   const onSubmit = async (values: CaseFormValues) => {
     if (!userProfile || userProfile.role !== 'lawyer') {
@@ -169,34 +186,66 @@ export function CaseForm({ initialData, caseId }: CaseFormProps) {
               />
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <FormField
-                control={form.control}
-                name="clientName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Client Name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="John Doe" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="clientEmail"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Client Email</FormLabel>
-                    <FormControl>
-                      <Input type="email" placeholder="client@example.com" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+            {isEditMode ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <FormField
+                  control={form.control}
+                  name="clientName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Client Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="John Doe" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="clientEmail"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Client Email</FormLabel>
+                      <FormControl>
+                        <Input type="email" placeholder="client@example.com" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            ) : (
+                <FormField
+                    control={form.control}
+                    name="clientEmail"
+                    render={({ field }) => (
+                        <FormItem className="flex flex-col">
+                            <FormLabel>Select a Client</FormLabel>
+                            <Combobox
+                                options={clientOptions}
+                                value={field.value}
+                                onChange={handleClientSelect}
+                                placeholder="Select a registered client..."
+                                searchPlaceholder="Search by name or email..."
+                                emptyPlaceholder="No clients found."
+                            />
+                             <FormMessage />
+                             {/* Hidden inputs to hold the values for the form */}
+                             <FormField
+                                control={form.control}
+                                name="clientName"
+                                render={({ field: nameField }) => (
+                                    <FormControl>
+                                        <Input type="hidden" {...nameField} />
+                                    </FormControl>
+                                )}
+                            />
+                        </FormItem>
+                    )}
+                />
+            )}
+
 
             <FormField
               control={form.control}
