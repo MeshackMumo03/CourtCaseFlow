@@ -42,6 +42,30 @@ const formSchema = z.object({
   lawFirmName: z.string().optional(),
   lawFirmAddress: z.string().optional(),
   lskRegistrationNumber: z.string().optional(),
+}).superRefine((data, ctx) => {
+    if (data.role === 'lawyer') {
+        if (!data.lskRegistrationNumber || data.lskRegistrationNumber.trim() === '') {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "LSK Registration Number is required for lawyers.",
+                path: ["lskRegistrationNumber"],
+            });
+        }
+        if (!data.lawFirmName || data.lawFirmName.trim() === '') {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "Law Firm Name is required for lawyers.",
+                path: ["lawFirmName"],
+            });
+        }
+        if (!data.lawFirmAddress || data.lawFirmAddress.trim() === '') {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "Law Firm Address is required for lawyers.",
+                path: ["lawFirmAddress"],
+            });
+        }
+    }
 });
 
 export function SignupForm() {
@@ -227,7 +251,7 @@ export function SignupForm() {
                     name="lskRegistrationNumber"
                     render={({ field }) => (
                         <FormItem>
-                        <FormLabel>LSK Registration Number (Optional)</FormLabel>
+                        <FormLabel>LSK Registration Number</FormLabel>
                          <FormControl>
                             <div className="relative">
                                 <Input placeholder="e.g., P.105/XXXXX/YY" {...field} />
@@ -243,10 +267,10 @@ export function SignupForm() {
                     name="lawFirmName"
                     render={({ field }) => (
                         <FormItem>
-                        <FormLabel>Law Firm Name (Optional)</FormLabel>
+                        <FormLabel>Law Firm Name</FormLabel>
                          <FormControl>
                              <div className="relative">
-                                <Input placeholder="e.g., CaseLink Associates LLP" {...field} />
+                                <Input placeholder="e.g., CourtCaseFlow Associates LLP" {...field} />
                                 <Building className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                             </div>
                          </FormControl>
@@ -259,7 +283,7 @@ export function SignupForm() {
                     name="lawFirmAddress"
                     render={({ field }) => (
                         <FormItem>
-                        <FormLabel>Law Firm Address (Optional)</FormLabel>
+                        <FormLabel>Law Firm Address</FormLabel>
                          <FormControl>
                              <div className="relative">
                                 <Textarea placeholder="e.g., 123 Legal Avenue, Nairobi, Kenya" {...field} />
