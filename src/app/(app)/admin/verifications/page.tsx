@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, AlertTriangle, CheckCircle, XCircle, ShieldQuestion, Search, UserCheck, UserX } from 'lucide-react';
+import { Loader2, AlertTriangle, CheckCircle, XCircle, ShieldQuestion, Search, UserCheck, UserX, Users } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { updateUserVerificationStatusAction } from '@/actions/admin';
 
@@ -22,12 +22,12 @@ export default function AdminVerificationsPage() {
   const router = useRouter();
   const { toast } = useToast();
 
-  const [pendingLawyers, setPendingLawyers] = useState<UserProfile[]>([]);
+  const [allLawyers, setAllLawyers] = useState<UserProfile[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<Record<string, boolean>>({});
 
-  const fetchPendingVerifications = useCallback(async () => {
+  const fetchAllLawyers = useCallback(async () => {
     setLoadingData(true);
     setError(null);
     try {
@@ -40,16 +40,12 @@ export default function AdminVerificationsPage() {
         fetchedLawyers.push({ uid: doc.id, ...doc.data() } as UserProfile);
       });
       
-      const lawyersToVerify = fetchedLawyers.filter(lawyer => 
-          (lawyer.lskVerificationStatus === 'pending_review' && lawyer.lskRegistrationNumber && lawyer.lskRegistrationNumber.trim() !== '') || 
-          (lawyer.lawFirmVerificationStatus === 'pending_review' && ((lawyer.lawFirmName && lawyer.lawFirmName.trim() !== '') || (lawyer.lawFirmAddress && lawyer.lawFirmAddress.trim() !== '')))
-      );
+      setAllLawyers(fetchedLawyers.sort((a, b) => (a.displayName || '').localeCompare(b.displayName || '')));
 
-      setPendingLawyers(lawyersToVerify);
     } catch (err) {
-      console.error('Error fetching pending verifications:', err);
-      setError('Failed to load users for verification.');
-      toast({ variant: 'destructive', title: 'Loading Error', description: 'Could not load users needing verification.' });
+      console.error('Error fetching lawyers:', err);
+      setError('Failed to load lawyers for verification.');
+      toast({ variant: 'destructive', title: 'Loading Error', description: 'Could not load lawyer data.' });
     } finally {
       setLoadingData(false);
     }
@@ -71,9 +67,9 @@ export default function AdminVerificationsPage() {
       return;
     }
     
-    fetchPendingVerifications();
+    fetchAllLawyers();
 
-  }, [adminUserProfile, authLoading, router, fetchPendingVerifications]);
+  }, [adminUserProfile, authLoading, router, fetchAllLawyers]);
 
   const handleVerificationUpdate = async (
     userId: string, 
@@ -88,7 +84,7 @@ export default function AdminVerificationsPage() {
     if (result.success) {
       toast({ title: 'Success', description: result.message });
       // Update local state to reflect the change
-      setPendingLawyers(prevLawyers => 
+      setAllLawyers(prevLawyers => 
         prevLawyers.map(lawyer => {
           if (lawyer.uid === userId) {
             return {
@@ -98,10 +94,7 @@ export default function AdminVerificationsPage() {
             };
           }
           return lawyer;
-        }).filter(lawyer => // Re-filter the list to remove those no longer pending
-            (lawyer.lskVerificationStatus === 'pending_review' && lawyer.lskRegistrationNumber && lawyer.lskRegistrationNumber.trim() !== '') || 
-            (lawyer.lawFirmVerificationStatus === 'pending_review' && ((lawyer.lawFirmName && lawyer.lawFirmName.trim() !== '') || (lawyer.lawFirmAddress && lawyer.lawFirmAddress.trim() !== '')))
-        )
+        })
       );
     } else {
       toast({ variant: 'destructive', title: 'Error', description: result.message });
@@ -148,21 +141,21 @@ export default function AdminVerificationsPage() {
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">Admin Verifications</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Lawyer Verification Management</h1>
         <ShieldQuestion className="h-8 w-8 text-primary" />
       </div>
       
       <Card>
         <CardHeader>
-          <CardTitle>Pending Lawyer Verifications</CardTitle>
-          <CardDescription>Review and approve or reject LSK and Law Firm details submitted by lawyers. Logged in as: {adminUserProfile.email}</CardDescription>
+          <CardTitle>All Lawyers</CardTitle>
+          <CardDescription>Review and manage the verification status of all lawyers on the platform. Logged in as: {adminUserProfile.email}</CardDescription>
         </CardHeader>
         <CardContent>
-          {pendingLawyers.length === 0 ? (
+          {allLawyers.length === 0 ? (
             <div className="text-center py-10 rounded-md border border-dashed">
-              <Search className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-              <p className="text-lg font-semibold text-muted-foreground">No pending verifications</p>
-              <p className="text-sm text-muted-foreground">All caught up! There are no lawyer details awaiting review.</p>
+              <Users className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+              <p className="text-lg font-semibold text-muted-foreground">No Lawyers Found</p>
+              <p className="text-sm text-muted-foreground">There are no users registered as lawyers on the platform yet.</p>
             </div>
           ) : (
             <Table>
@@ -178,7 +171,7 @@ export default function AdminVerificationsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {pendingLawyers.map((lawyer) => (
+                {allLawyers.map((lawyer) => (
                   <TableRow key={lawyer.uid}>
                     <TableCell className="font-medium">{lawyer.displayName || 'N/A'}</TableCell>
                     <TableCell>{lawyer.email}</TableCell>
@@ -211,7 +204,7 @@ export default function AdminVerificationsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right space-y-1 md:space-y-0 md:space-x-1">
-                      {lawyer.lskVerificationStatus === 'pending_review' && lawyer.lskRegistrationNumber && lawyer.lskRegistrationNumber.trim() !== '' && (
+                      {lawyer.lskVerificationStatus === 'pending_review' && (
                         <div className="flex flex-col sm:flex-row sm:justify-end sm:gap-1">
                           <Button
                             variant="outline"
@@ -233,7 +226,7 @@ export default function AdminVerificationsPage() {
                           </Button>
                         </div>
                       )}
-                       {lawyer.lawFirmVerificationStatus === 'pending_review' && ((lawyer.lawFirmName && lawyer.lawFirmName.trim() !== '') || (lawyer.lawFirmAddress && lawyer.lawFirmAddress.trim() !== '')) && (
+                       {lawyer.lawFirmVerificationStatus === 'pending_review' && (
                         <div className="flex flex-col sm:flex-row sm:justify-end sm:gap-1 mt-1 sm:mt-0">
                            <Button
                             variant="outline"
@@ -251,10 +244,13 @@ export default function AdminVerificationsPage() {
                             disabled={isSubmitting[`${lawyer.uid}-lawFirm-rejected`]}
                             className="text-xs"
                           >
-                             {isSubmitting[`${lawyer.uid}-lawFirm-rejected`] ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3 mr-1" />} Reject Firm
+                             {isSubmitting[`${lawy.uid}-lawFirm-rejected`] ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3 mr-1" />} Reject Firm
                           </Button>
                         </div>
                       )}
+                       {(lawyer.lskVerificationStatus !== 'pending_review' && lawyer.lawFirmVerificationStatus !== 'pending_review') &&
+                        <span className="text-xs text-muted-foreground italic">No action needed</span>
+                       }
                     </TableCell>
                   </TableRow>
                 ))}
@@ -266,3 +262,5 @@ export default function AdminVerificationsPage() {
     </div>
   );
 }
+
+    
