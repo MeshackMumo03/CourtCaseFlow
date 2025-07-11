@@ -11,6 +11,7 @@ interface ActionResult {
   message: string;
   userId?: string;
   updatedProfile?: Partial<UserProfile>;
+  createdProfile?: UserProfile;
 }
 
 export async function createUserProfileInFirestore(
@@ -18,23 +19,38 @@ export async function createUserProfileInFirestore(
   email: string,
   displayName: string,
   role: 'lawyer' | 'client',
-  phoneNumber?: string
+  phoneNumber?: string,
+  lawFirmName?: string,
+  lawFirmAddress?: string,
+  lskRegistrationNumber?: string
 ): Promise<ActionResult> {
   try {
     const userDocRef = doc(db, 'users', uid);
-    const userProfileData: Omit<UserProfile, 'createdAt' | 'uid'> & { uid: string; createdAt: any } = {
+    
+    let lskVerificationStatus: UserProfile['lskVerificationStatus'] = 'unverified';
+    if (role === 'lawyer' && lskRegistrationNumber && lskRegistrationNumber.trim() !== '') {
+        lskVerificationStatus = 'pending_review';
+    }
+
+    let lawFirmVerificationStatus: UserProfile['lawFirmVerificationStatus'] = 'unverified';
+    if (role === 'lawyer' && (lawFirmName && lawFirmName.trim() !== '' || lawFirmAddress && lawFirmAddress.trim() !== '')) {
+        lawFirmVerificationStatus = 'pending_review';
+    }
+
+    const userProfileData: Omit<UserProfile, 'createdAt'> & { createdAt: any } = {
       uid,
       email: email!, 
       displayName: displayName!, 
       role,
       createdAt: serverTimestamp(),
       phoneNumber: phoneNumber || undefined,
-      lawFirmName: role === 'lawyer' ? '' : undefined,
-      lawFirmAddress: role === 'lawyer' ? '' : undefined,
-      lskRegistrationNumber: role === 'lawyer' ? '' : undefined, 
       photoURL: undefined,             
-      lskVerificationStatus: role === 'lawyer' ? 'unverified' : undefined,
-      lawFirmVerificationStatus: role === 'lawyer' ? 'unverified' : undefined,
+      // Lawyer specific fields
+      lawFirmName: role === 'lawyer' ? lawFirmName || '' : undefined,
+      lawFirmAddress: role === 'lawyer' ? lawFirmAddress || '' : undefined,
+      lskRegistrationNumber: role === 'lawyer' ? lskRegistrationNumber || '' : undefined, 
+      lskVerificationStatus: role === 'lawyer' ? lskVerificationStatus : undefined,
+      lawFirmVerificationStatus: role === 'lawyer' ? lawFirmVerificationStatus : undefined,
     };
 
     const cleanProfileData: { [key: string]: any } = {};
@@ -46,7 +62,13 @@ export async function createUserProfileInFirestore(
     
     await setDoc(userDocRef, cleanProfileData);
 
-    return { success: true, message: 'User profile created successfully.', userId: uid };
+    const createdProfileForContext: UserProfile = {
+      ...cleanProfileData,
+      createdAt: Timestamp.now() // Use client-side timestamp for immediate context update
+    } as UserProfile;
+
+
+    return { success: true, message: 'User profile created successfully.', userId: uid, createdProfile: createdProfileForContext };
   } catch (error: any) {
     console.error('Error creating user profile in Firestore:', error);
     return { success: false, message: error.message || 'Failed to create user profile in database.' };
@@ -87,7 +109,7 @@ export async function updateUserProfileDetails(
     
     // Handle LSK verification status update specifically based on LSK number changes
     if (details.lskRegistrationNumber !== undefined) { // Check if lskRegistrationNumber is part of the update
-      if (details.lskRegistrationNumber) { // If it's being set or changed to a non-empty value
+      if (details.lskRegistrationNumber && details.lskRegistrationNumber.trim() !== '') { // If it's being set or changed to a non-empty value
         cleanedUpdateData.lskVerificationStatus = 'pending_review';
       } else { // If it's being explicitly cleared
         cleanedUpdateData.lskVerificationStatus = 'unverified';
@@ -96,15 +118,12 @@ export async function updateUserProfileDetails(
 
     // Handle Law Firm verification status update
     let firmDetailsChanged = false;
-    if (details.lawFirmName !== undefined) {
-        firmDetailsChanged = true;
-    }
-    if (details.lawFirmAddress !== undefined) {
+    if (details.lawFirmName !== undefined || details.lawFirmAddress !== undefined) {
         firmDetailsChanged = true;
     }
 
     if (firmDetailsChanged) {
-        if (details.lawFirmName || details.lawFirmAddress) { // If either firm name or address is being set/changed
+        if ((details.lawFirmName && details.lawFirmName.trim() !== '') || (details.lawFirmAddress && details.lawFirmAddress.trim() !== '')) { // If either firm name or address is being set/changed
             cleanedUpdateData.lawFirmVerificationStatus = 'pending_review';
         } else if (details.lawFirmName === '' && details.lawFirmAddress === '') { // If both are explicitly cleared
             cleanedUpdateData.lawFirmVerificationStatus = 'unverified';

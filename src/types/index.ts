@@ -9,18 +9,24 @@ export interface UserProfile {
   createdAt: Timestamp;
   photoURL?: string;
   phoneNumber?: string;
+  
+  // Lawyer-specific fields
   lawFirmName?: string;
   lawFirmAddress?: string;
+  lskRegistrationNumber?: string;
+  lskVerificationStatus?: 'unverified' | 'pending_review' | 'verified' | 'rejected';
+  lawFirmVerificationStatus?: 'unverified' | 'pending_review' | 'verified' | 'rejected';
 }
 
 export interface CaseDocument {
   id: string;
   name: string;
+  description?: string;
   storagePath: string; // Path in Firebase Storage
   downloadURL: string;
   uploadedAt: Timestamp;
   uploaderUid: string; // UID of the lawyer who uploaded
-  tags: string[];
+  tags?: string[];
   mimeType?: string;
   // version?: number; // For version control, future enhancement
   // isLatest?: boolean; // For version control, future enhancement

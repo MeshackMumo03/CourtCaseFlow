@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { User as FirebaseUser } from 'firebase/auth';
@@ -32,13 +33,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         const userDocRef = doc(db, 'users', firebaseUser.uid);
         const userDocSnap = await getDoc(userDocRef);
         if (userDocSnap.exists()) {
-          const profileData = userDocSnap.data() as UserProfile;
-          // Ensure timestamps are correctly handled if they are Firestore Timestamps
-          // For simplicity, assuming they are already in a usable format or converted upon fetch
-          // If createdAt is a Firestore Timestamp, convert it:
-           const fetchedProfile: UserProfile = {
-            ...profileData,
-            createdAt: profileData.createdAt instanceof Timestamp ? profileData.createdAt : Timestamp.now(), // or handle conversion if it's serialized
+          const profileData = userDocSnap.data() as Omit<UserProfile, 'createdAt'> & { createdAt: Timestamp | { seconds: number, nanoseconds: number } };
+          
+          let createdAtTimestamp: Timestamp;
+          if (profileData.createdAt instanceof Timestamp) {
+            createdAtTimestamp = profileData.createdAt;
+          } else if (profileData.createdAt && typeof profileData.createdAt === 'object' && 'seconds' in profileData.createdAt) {
+            // Handle plain object format for Timestamps that sometimes comes from server actions or serialization
+            createdAtTimestamp = new Timestamp(profileData.createdAt.seconds, profileData.createdAt.nanoseconds);
+          } else {
+             // Fallback for newly created users where serverTimestamp might not be resolved yet
+            createdAtTimestamp = Timestamp.now();
+          }
+
+          const fetchedProfile: UserProfile = {
+            ...(userDocSnap.data() as UserProfile),
+            createdAt: createdAtTimestamp,
           };
           setUserProfile(fetchedProfile);
         } else {

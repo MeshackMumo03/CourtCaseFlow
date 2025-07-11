@@ -3,7 +3,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createUserWithEmailAndPassword, updateProfile as updateFirebaseProfile } from "firebase/auth";
-import { Eye, EyeOff, Loader2, Phone } from "lucide-react";
+import { Eye, EyeOff, Loader2, Phone, Building, MapPin, NotebookText } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -26,6 +26,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase"; // Client-side auth
 import { useAuth } from "@/hooks/use-auth";
+import { Textarea } from "../ui/textarea";
 
 const phoneRegex = new RegExp(
   /^([+]?[\s0-9]+)?(\d{3}|[(]?[0-9]+[)])?([-]?[\s]?[0-9])+$/
@@ -37,6 +38,10 @@ const formSchema = z.object({
   password: z.string().min(6, { message: "Password must be at least 6 characters." }),
   phoneNumber: z.string().regex(phoneRegex, 'Invalid phone number').min(10, {message: "Phone number must be at least 10 digits."}).optional().or(z.literal('')),
   role: z.enum(["lawyer", "client"], { required_error: "You need to select a role." }),
+  // Lawyer specific fields
+  lawFirmName: z.string().optional(),
+  lawFirmAddress: z.string().optional(),
+  lskRegistrationNumber: z.string().optional(),
 });
 
 export function SignupForm() {
@@ -54,8 +59,13 @@ export function SignupForm() {
       password: "",
       phoneNumber: "",
       role: "client",
+      lawFirmName: "",
+      lawFirmAddress: "",
+      lskRegistrationNumber: "",
     },
   });
+
+  const selectedRole = form.watch("role");
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setLoading(true);
@@ -70,19 +80,14 @@ export function SignupForm() {
         values.email,
         values.displayName,
         values.role,
-        values.phoneNumber || undefined
+        values.phoneNumber || undefined,
+        values.lawFirmName,
+        values.lawFirmAddress,
+        values.lskRegistrationNumber,
       );
 
-      if (profileResult.success) {
-        setUserProfile({ 
-          uid: firebaseUser.uid, 
-          email: values.email, 
-          displayName: values.displayName, 
-          role: values.role,
-          phoneNumber: values.phoneNumber || undefined,
-          createdAt: new Date() as any 
-        });
-
+      if (profileResult.success && profileResult.createdProfile) {
+        setUserProfile(profileResult.createdProfile);
         toast({ title: "Signup Successful", description: "Account created. Redirecting..." });
         router.push("/dashboard");
       } else {
@@ -118,6 +123,36 @@ export function SignupForm() {
       <CardContent>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+             <FormField
+              control={form.control}
+              name="role"
+              render={({ field }) => (
+                <FormItem className="space-y-3">
+                  <FormLabel>I am a...</FormLabel>
+                  <FormControl>
+                    <RadioGroup
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                      className="flex space-x-4"
+                    >
+                      <FormItem className="flex items-center space-x-3 space-y-0">
+                        <FormControl>
+                          <RadioGroupItem value="client" />
+                        </FormControl>
+                        <FormLabel className="font-normal">Client</FormLabel>
+                      </FormItem>
+                       <FormItem className="flex items-center space-x-3 space-y-0">
+                        <FormControl>
+                          <RadioGroupItem value="lawyer" />
+                        </FormControl>
+                        <FormLabel className="font-normal">Lawyer</FormLabel>
+                      </FormItem>
+                    </RadioGroup>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <FormField
               control={form.control}
               name="displayName"
@@ -184,36 +219,63 @@ export function SignupForm() {
                 </FormItem>
               )}
             />
-            <FormField
-              control={form.control}
-              name="role"
-              render={({ field }) => (
-                <FormItem className="space-y-3">
-                  <FormLabel>I am a...</FormLabel>
-                  <FormControl>
-                    <RadioGroup
-                      onValueChange={field.onChange}
-                      defaultValue={field.value}
-                      className="flex flex-col space-y-1"
-                    >
-                      <FormItem className="flex items-center space-x-3 space-y-0">
-                        <FormControl>
-                          <RadioGroupItem value="lawyer" />
-                        </FormControl>
-                        <FormLabel className="font-normal">Lawyer</FormLabel>
-                      </FormItem>
-                      <FormItem className="flex items-center space-x-3 space-y-0">
-                        <FormControl>
-                          <RadioGroupItem value="client" />
-                        </FormControl>
-                        <FormLabel className="font-normal">Client</FormLabel>
-                      </FormItem>
-                    </RadioGroup>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+
+            {selectedRole === 'lawyer' && (
+              <div className="space-y-4 pt-4 border-t">
+                 <FormField
+                    control={form.control}
+                    name="lskRegistrationNumber"
+                    render={({ field }) => (
+                        <FormItem>
+                        <FormLabel>LSK Registration Number (Optional)</FormLabel>
+                         <FormControl>
+                            <div className="relative">
+                                <Input placeholder="e.g., P.105/XXXXX/YY" {...field} />
+                                <NotebookText className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            </div>
+                         </FormControl>
+                         <FormMessage />
+                        </FormItem>
+                    )}
+                />
+                <FormField
+                    control={form.control}
+                    name="lawFirmName"
+                    render={({ field }) => (
+                        <FormItem>
+                        <FormLabel>Law Firm Name (Optional)</FormLabel>
+                         <FormControl>
+                             <div className="relative">
+                                <Input placeholder="e.g., CaseLink Associates LLP" {...field} />
+                                <Building className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            </div>
+                         </FormControl>
+                         <FormMessage />
+                        </FormItem>
+                    )}
+                />
+                <FormField
+                    control={form.control}
+                    name="lawFirmAddress"
+                    render={({ field }) => (
+                        <FormItem>
+                        <FormLabel>Law Firm Address (Optional)</FormLabel>
+                         <FormControl>
+                             <div className="relative">
+                                <Textarea placeholder="e.g., 123 Legal Avenue, Nairobi, Kenya" {...field} />
+                                <MapPin className="absolute right-3 top-3 h-4 w-4 text-muted-foreground" />
+                            </div>
+                         </FormControl>
+                         <FormMessage />
+                        </FormItem>
+                    )}
+                />
+                <p className="text-xs text-muted-foreground">
+                    Providing LSK or Law Firm details will submit them for verification by our admin team.
+                </p>
+              </div>
+            )}
+           
             <Button type="submit" className="w-full" disabled={loading}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Create Account
