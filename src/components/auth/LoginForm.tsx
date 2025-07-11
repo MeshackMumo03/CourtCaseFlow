@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -50,10 +51,16 @@ export function LoginForm() {
       router.push("/dashboard"); // Firebase onAuthStateChanged will handle profile loading
     } catch (error: any) {
       console.error("Login error:", error);
+      let description = "An unexpected error occurred.";
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
+        description = "Invalid email or password. Please try again.";
+      } else {
+        description = error.message;
+      }
       toast({
         variant: "destructive",
         title: "Login Failed",
-        description: error.message || "An unexpected error occurred.",
+        description: description,
       });
     } finally {
       setLoading(false);
