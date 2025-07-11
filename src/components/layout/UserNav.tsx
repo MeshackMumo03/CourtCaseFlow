@@ -1,3 +1,4 @@
+
 "use client";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -14,9 +15,11 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
-import { LogOut, User as UserIcon, Settings, Briefcase, ShieldCheck } from "lucide-react";
+import { LogOut, User as UserIcon, Settings, Briefcase, ShieldCheck, ShieldQuestion } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+
+const ADMIN_EMAIL = 'admin@caselink.com';
 
 export function UserNav() {
   const { user, userProfile } = useAuth();
@@ -47,8 +50,19 @@ export function UserNav() {
     return name.substring(0, 2).toUpperCase();
   };
   
-  const roleIcon = userProfile.role === 'lawyer' ? <Briefcase className="mr-2 h-4 w-4" /> : <ShieldCheck className="mr-2 h-4 w-4" />;
+  const isAdmin = userProfile.email === ADMIN_EMAIL;
+  
+  const getRoleInfo = () => {
+    if (isAdmin) {
+      return { icon: <ShieldQuestion className="mr-2 h-4 w-4" />, label: "Admin" };
+    }
+    if (userProfile.role === 'lawyer') {
+      return { icon: <Briefcase className="mr-2 h-4 w-4" />, label: "Lawyer" };
+    }
+    return { icon: <UserIcon className="mr-2 h-4 w-4" />, label: "Client" };
+  };
 
+  const roleInfo = getRoleInfo();
 
   return (
     <DropdownMenu>
@@ -78,8 +92,8 @@ export function UserNav() {
             </Link>
           </DropdownMenuItem>
            <DropdownMenuItem>
-              {roleIcon}
-              <span className="capitalize">{userProfile.role}</span>
+              {roleInfo.icon}
+              <span className="capitalize">{roleInfo.label}</span>
             </DropdownMenuItem>
           <DropdownMenuItem asChild>
             <Link href="/dashboard/settings"> {/* Assuming a settings page */}
