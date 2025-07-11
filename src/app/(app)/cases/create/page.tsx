@@ -1,3 +1,4 @@
+
 'use client';
 import { CaseForm } from '@/components/cases/CaseForm';
 import { useAuth } from '@/hooks/use-auth';
@@ -7,6 +8,8 @@ import { Loader2 } from 'lucide-react';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { UserProfile } from '@/types';
+
+const ADMIN_EMAIL = 'admin@caselink.com';
 
 export default function CreateCasePage() {
   const { userProfile, loading } = useAuth();
@@ -25,14 +28,17 @@ export default function CreateCasePage() {
         try {
           const q = query(collection(db, 'users'), where('role', '==', 'client'));
           const querySnapshot = await getDocs(q);
-          const clientList = querySnapshot.docs.map(doc => {
-            const data = doc.data();
-            return {
-              uid: doc.id,
-              displayName: data.displayName || 'Unnamed Client',
-              email: data.email || ''
-            };
-          });
+          const clientList = querySnapshot.docs
+            .map(doc => {
+                const data = doc.data();
+                return {
+                uid: doc.id,
+                displayName: data.displayName || 'Unnamed Client',
+                email: data.email || ''
+                };
+            })
+            .filter(client => client.email !== ADMIN_EMAIL); // Explicitly filter out the admin
+            
           setClients(clientList);
         } catch (error) {
           console.error("Error fetching clients:", error);
