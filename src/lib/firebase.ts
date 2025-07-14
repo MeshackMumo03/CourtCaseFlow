@@ -4,7 +4,6 @@ import { getAuth, type Auth } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
 import { getStorage, type FirebaseStorage } from 'firebase/storage';
 
-// Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyBMcZTemZQQ01oU5jpKu6GcI3spdaIKNjM",
   authDomain: "caselink-skc52.firebaseapp.com",
@@ -14,33 +13,16 @@ const firebaseConfig = {
   appId: "1:798746625437:web:f2b0f0281d9bd601b61b74"
 };
 
-let app: FirebaseApp;
-let auth: Auth;
-let db: Firestore;
-let storage: FirebaseStorage;
+// Initialize Firebase
+const app: FirebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
+const auth: Auth = getAuth(app);
+const db: Firestore = getFirestore(app);
+const storage: FirebaseStorage = getStorage(app);
 
-function initializeFirebase() {
-  if (!getApps().length) {
-    app = initializeApp(firebaseConfig);
-  } else {
-    app = getApp();
-  }
-  auth = getAuth(app);
-  db = getFirestore(app);
-  storage = getStorage(app);
-}
-
-// Ensure Firebase is initialized on first load
-if (typeof window !== 'undefined' && !getApps().length) {
-  initializeFirebase();
-}
-
-// Export a function to ensure initialization for server-side logic
+// This function is kept for any explicit server-side initialization checks if needed,
+// but the direct exports should now work reliably.
 export const ensureFirebaseInitialized = () => {
-  if (!getApps().length) {
-     initializeFirebase();
-  }
+  // No-op, initialization is now handled above.
 };
 
-// Direct export of initialized services
 export { app, auth, db, storage };
