@@ -29,10 +29,19 @@ export default function DashboardPage() {
       if (userProfile.role === 'lawyer') {
         q = query(collection(db, 'cases'), where('lawyerUid', '==', userProfile.uid), orderBy('createdAt', 'desc'));
       } else { // client
-        q = query(collection(db, 'cases'), where('clientEmail', '==', userProfile.email), orderBy('createdAt', 'desc'));
+        // Removed orderBy to prevent index error. Sorting will be done client-side.
+        q = query(collection(db, 'cases'), where('clientEmail', '==', userProfile.email));
       }
       const querySnapshot = await getDocs(q);
       const cases: CaseFile[] = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CaseFile));
+      
+      // Sort cases by creation date descending (newest first)
+      cases.sort((a, b) => {
+        const timeA = a.createdAt instanceof Timestamp ? a.createdAt.toMillis() : 0;
+        const timeB = b.createdAt instanceof Timestamp ? b.createdAt.toMillis() : 0;
+        return timeB - timeA;
+      });
+
 
       const activeCases = cases.filter(c => c.status === 'active').length;
       const upcomingHearings = cases.filter(c => c.hearingDate && c.hearingDate.toMillis() > Date.now()).length;
@@ -280,5 +289,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-    
