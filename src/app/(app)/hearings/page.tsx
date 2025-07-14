@@ -84,7 +84,10 @@ export default function HearingsPage() {
     );
   }
 
-  const HearingListItem = ({ hearing }: { hearing: CaseFile }) => (
+  const HearingListItem = ({ hearing }: { hearing: CaseFile }) => {
+    const hearingDate = hearing.hearingDate instanceof Timestamp ? hearing.hearingDate.toDate() : null;
+    
+    return (
      <li className="p-4 rounded-md border hover:bg-accent/50 transition-colors">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
@@ -93,10 +96,10 @@ export default function HearingsPage() {
         </div>
         <div className="text-sm text-right flex-shrink-0">
             <p className="font-medium text-primary">
-                {hearing.hearingDate instanceof Timestamp ? hearing.hearingDate.toDate().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'Date not set'}
+                {hearingDate ? hearingDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'Date not set'}
             </p>
              <p className="text-muted-foreground">
-                {hearing.hearingDate instanceof Timestamp ? hearing.hearingDate.toDate().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}
+                {hearingDate ? hearingDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}
             </p>
         </div>
       </div>
@@ -108,7 +111,8 @@ export default function HearingsPage() {
          </Button>
       </div>
     </li>
-  )
+   )
+  }
 
   return (
     <div className="space-y-6">

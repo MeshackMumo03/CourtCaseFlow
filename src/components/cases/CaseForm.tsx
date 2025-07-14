@@ -68,6 +68,18 @@ export function CaseForm({ initialData, caseId, clients = [] }: CaseFormProps) {
     value: client.email!,
     label: `${client.displayName} (${client.email})`
   }));
+  
+  const getInitialTime = () => {
+    if (initialData?.hearingDate) {
+      const date = initialData.hearingDate instanceof Timestamp 
+        ? initialData.hearingDate.toDate() 
+        : new Date(initialData.hearingDate as any);
+      return format(date, 'HH:mm');
+    }
+    return '';
+  };
+
+  const [hearingTime, setHearingTime] = useState<string>(getInitialTime());
 
   const form = useForm<CaseFormValues>({
     resolver: zodResolver(caseFormSchema),
@@ -103,7 +115,19 @@ export function CaseForm({ initialData, caseId, clients = [] }: CaseFormProps) {
     setIsLoading(true);
     try {
       const formData = new FormData();
-      Object.entries(values).forEach(([key, value]) => {
+      
+      const combinedValues = { ...values };
+
+      if (combinedValues.hearingDate) {
+          const date = new Date(combinedValues.hearingDate);
+          if (hearingTime) {
+            const [hours, minutes] = hearingTime.split(':').map(Number);
+            date.setHours(hours, minutes);
+          }
+          combinedValues.hearingDate = date;
+      }
+
+      Object.entries(combinedValues).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
           if (key === 'hearingDate' && value instanceof Date) {
             formData.append(key, value.toISOString());
@@ -295,36 +319,55 @@ export function CaseForm({ initialData, caseId, clients = [] }: CaseFormProps) {
               name="hearingDate"
               render={({ field }) => (
                 <FormItem className="flex flex-col">
-                  <FormLabel>Hearing Date (Optional)</FormLabel>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <FormControl>
-                        <Button
-                          variant={'outline'}
-                          className={cn(
-                            'w-full pl-3 text-left font-normal',
-                            !field.value && 'text-muted-foreground'
-                          )}
-                        >
-                          {field.value ? (
-                            format(field.value, 'PPP')
-                          ) : (
-                            <span>Pick a date</span>
-                          )}
-                          <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                        </Button>
-                      </FormControl>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={field.value || undefined}
-                        onSelect={(date) => field.onChange(date || null)}
-                        disabled={(date) => date < new Date(new Date().setDate(new Date().getDate()-1)) } // Disable past dates
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
+                  <FormLabel>Hearing Date & Time (Optional)</FormLabel>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            variant={'outline'}
+                            className={cn(
+                              'w-full sm:w-[240px] pl-3 text-left font-normal',
+                              !field.value && 'text-muted-foreground'
+                            )}
+                          >
+                            {field.value ? (
+                              format(field.value, 'PPP')
+                            ) : (
+                              <span>Pick a date</span>
+                            )}
+                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={field.value || undefined}
+                          onSelect={(date) => {
+                            field.onChange(date || null)
+                            if (date && !hearingTime) {
+                                // Default to a morning time if none is set
+                                setHearingTime('09:00');
+                            }
+                            if (!date) {
+                                setHearingTime('');
+                            }
+                          }}
+                          disabled={(date) => date < new Date(new Date().setDate(new Date().getDate()-1)) } // Disable past dates
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    {field.value && (
+                       <Input
+                          type="time"
+                          className="w-full sm:w-auto"
+                          value={hearingTime}
+                          onChange={(e) => setHearingTime(e.target.value)}
+                        />
+                    )}
+                  </div>
                   <FormMessage />
                 </FormItem>
               )}
