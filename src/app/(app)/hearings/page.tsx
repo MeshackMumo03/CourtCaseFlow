@@ -9,14 +9,16 @@ import { db } from '@/lib/firebase';
 import type { CaseFile } from '@/types';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { CalendarDays, Loader2, AlertTriangle, Eye } from "lucide-react";
+import { CalendarDays, Loader2, AlertTriangle, Eye, CheckCircle, Archive } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { Separator } from "@/components/ui/separator";
 
 export default function HearingsPage() {
   const { userProfile, loading: authLoading } = useAuth();
   const router = useRouter();
   const [upcomingHearings, setUpcomingHearings] = useState<CaseFile[]>([]);
+  const [pastHearings, setPastHearings] = useState<CaseFile[]>([]);
   const [loadingHearings, setLoadingHearings] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,8 +35,6 @@ export default function HearingsPage() {
       setError(null);
       try {
         let q;
-        // Simplify the query to only filter by user, not by date.
-        // Date filtering and sorting will happen on the client-side.
         if (userProfile.role === 'lawyer') {
           q = query(collection(db, 'cases'), where('lawyerUid', '==', userProfile.uid));
         } else { // client
@@ -47,17 +47,24 @@ export default function HearingsPage() {
           allUserCases.push({ id: doc.id, ...doc.data() } as CaseFile);
         });
         
-        // Now, filter and sort on the client-side
+        // Filter and sort on the client-side
         const now = Timestamp.now();
-        const futureHearings = allUserCases
-          .filter(c => c.hearingDate && c.hearingDate instanceof Timestamp && c.hearingDate.toMillis() >= now.toMillis())
+        const casesWithDates = allUserCases.filter(c => c.hearingDate && c.hearingDate instanceof Timestamp);
+
+        const futureHearings = casesWithDates
+          .filter(c => (c.hearingDate as Timestamp).toMillis() >= now.toMillis())
           .sort((a, b) => (a.hearingDate as Timestamp).toMillis() - (b.hearingDate as Timestamp).toMillis());
 
+        const previousHearings = casesWithDates
+          .filter(c => (c.hearingDate as Timestamp).toMillis() < now.toMillis())
+          .sort((a, b) => (b.hearingDate as Timestamp).toMillis() - (a.hearingDate as Timestamp).toMillis());
+
         setUpcomingHearings(futureHearings);
+        setPastHearings(previousHearings);
 
       } catch (err: any) {
         console.error("Error fetching hearings:", err);
-        setError("Failed to load upcoming hearings. Please try again.");
+        setError("Failed to load hearings. Please try again.");
       } finally {
         setLoadingHearings(false);
       }
@@ -77,66 +84,104 @@ export default function HearingsPage() {
     );
   }
 
+  const HearingListItem = ({ hearing }: { hearing: CaseFile }) => (
+     <li className="p-4 rounded-md border hover:bg-accent/50 transition-colors">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div>
+            <h3 className="text-lg font-semibold">{hearing.caseNumber} - {hearing.clientName}</h3>
+            <p className="text-sm text-muted-foreground">Court: {hearing.court}</p>
+        </div>
+        <div className="text-sm text-right flex-shrink-0">
+            <p className="font-medium text-primary">
+                {hearing.hearingDate instanceof Timestamp ? hearing.hearingDate.toDate().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'Date not set'}
+            </p>
+             <p className="text-muted-foreground">
+                {hearing.hearingDate instanceof Timestamp ? hearing.hearingDate.toDate().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}
+            </p>
+        </div>
+      </div>
+      <div className="mt-3 pt-3 border-t flex justify-end">
+         <Button variant="outline" size="sm" asChild>
+            <Link href={`/cases/${hearing.id}`}>
+                <Eye className="mr-2 h-4 w-4"/> View Case
+            </Link>
+         </Button>
+      </div>
+    </li>
+  )
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">Upcoming Hearings</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Hearings Schedule</h1>
         <CalendarDays className="h-8 w-8 text-primary" />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Scheduled Hearings</CardTitle>
-          <CardDescription>
-            View your upcoming court appearances and hearing details, sorted by the nearest date.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {error && (
-            <div className="text-center py-10 rounded-md border border-dashed border-destructive/50 bg-destructive/10 text-destructive">
+       {error && (
+        <Card>
+            <CardContent className="text-center py-10 rounded-md border border-dashed border-destructive/50 bg-destructive/10 text-destructive">
                 <AlertTriangle className="h-12 w-12 mx-auto mb-4" />
                 <p className="text-lg font-semibold">Error Loading Hearings</p>
                 <p className="text-sm">{error}</p>
-            </div>
-          )}
-          {!error && upcomingHearings.length === 0 && (
-            <div className="text-center py-10 rounded-md border border-dashed">
-              <Image src="https://placehold.co/300x200.png" alt="No hearings scheduled" width={300} height={200} className="mx-auto mb-4 rounded-md" data-ai-hint="calendar empty"/>
-              <p className="text-lg font-semibold text-muted-foreground">No Upcoming Hearings</p>
-              <p className="text-sm text-muted-foreground">There are no hearings currently scheduled in the future.</p>
-            </div>
-          )}
-          {!error && upcomingHearings.length > 0 && (
-            <ul className="space-y-4">
-              {upcomingHearings.map((hearing) => (
-                <li key={hearing.id} className="p-4 rounded-md border hover:bg-accent/50 transition-colors">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                    <div>
-                        <h3 className="text-lg font-semibold">{hearing.caseNumber} - {hearing.clientName}</h3>
-                        <p className="text-sm text-muted-foreground">Court: {hearing.court}</p>
+            </CardContent>
+        </Card>
+      )}
+
+      {!error && (
+        <div className="space-y-8">
+            {/* Upcoming Hearings */}
+            <Card>
+                <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                    <CalendarDays className="h-6 w-6 text-primary" />
+                    Upcoming Hearings
+                </CardTitle>
+                <CardDescription>
+                    Your future court appearances and hearing details, sorted by the nearest date.
+                </CardDescription>
+                </CardHeader>
+                <CardContent>
+                {upcomingHearings.length === 0 ? (
+                    <div className="text-center py-10 rounded-md border border-dashed">
+                    <Image src="https://placehold.co/300x200.png" alt="No hearings scheduled" width={300} height={200} className="mx-auto mb-4 rounded-md" data-ai-hint="calendar empty"/>
+                    <p className="text-lg font-semibold text-muted-foreground">No Upcoming Hearings</p>
+                    <p className="text-sm text-muted-foreground">There are no hearings currently scheduled in the future.</p>
                     </div>
-                    <div className="text-sm text-right">
-                        <p className="font-medium text-primary">
-                            {hearing.hearingDate instanceof Timestamp ? hearing.hearingDate.toDate().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'Date not set'}
-                        </p>
-                         <p className="text-muted-foreground">
-                            {hearing.hearingDate instanceof Timestamp ? hearing.hearingDate.toDate().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}
-                        </p>
+                ) : (
+                    <ul className="space-y-4">
+                        {upcomingHearings.map((hearing) => <HearingListItem key={hearing.id} hearing={hearing} />)}
+                    </ul>
+                )}
+                </CardContent>
+            </Card>
+
+            {/* Past Hearings */}
+            <Card>
+                <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                    <Archive className="h-6 w-6 text-muted-foreground" />
+                    Past Hearings
+                </CardTitle>
+                <CardDescription>
+                    A record of your past court appearances, with the most recent listed first.
+                </CardDescription>
+                </CardHeader>
+                <CardContent>
+                {pastHearings.length === 0 ? (
+                    <div className="text-center py-10 rounded-md border border-dashed">
+                        <Image src="https://placehold.co/300x200.png" alt="No past hearings" width={300} height={200} className="mx-auto mb-4 rounded-md" data-ai-hint="archive empty"/>
+                        <p className="text-lg font-semibold text-muted-foreground">No Past Hearings</p>
+                        <p className="text-sm text-muted-foreground">There are no hearings recorded in the past.</p>
                     </div>
-                  </div>
-                  <div className="mt-3 pt-3 border-t flex justify-end">
-                     <Button variant="outline" size="sm" asChild>
-                        <Link href={`/cases/${hearing.id}`}>
-                            <Eye className="mr-2 h-4 w-4"/> View Case
-                        </Link>
-                     </Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+                ) : (
+                    <ul className="space-y-4">
+                        {pastHearings.map((hearing) => <HearingListItem key={hearing.id} hearing={hearing} />)}
+                    </ul>
+                )}
+                </CardContent>
+            </Card>
+        </div>
+      )}
     </div>
   );
 }
