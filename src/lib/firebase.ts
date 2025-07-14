@@ -1,8 +1,8 @@
 
-import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { getAuth, Auth } from 'firebase/auth';
-import { getFirestore, Firestore } from 'firebase/firestore';
-import { getStorage, FirebaseStorage } from 'firebase/storage';
+import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
+import { getAuth, type Auth } from 'firebase/auth';
+import { getFirestore, type Firestore } from 'firebase/firestore';
+import { getStorage, type FirebaseStorage } from 'firebase/storage';
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -19,8 +19,6 @@ let auth: Auth;
 let db: Firestore;
 let storage: FirebaseStorage;
 
-
-// This function ensures that we initialize the app only once.
 function initializeFirebase() {
   if (!getApps().length) {
     app = initializeApp(firebaseConfig);
@@ -32,18 +30,17 @@ function initializeFirebase() {
   storage = getStorage(app);
 }
 
-// Call the function to ensure services are initialized.
-initializeFirebase();
+// Ensure Firebase is initialized on first load
+if (typeof window !== 'undefined' && !getApps().length) {
+  initializeFirebase();
+}
 
-// Export the initialized services.
-export { app, auth, db, storage };
-
-// This function can be used to ensure initialization has occurred if needed,
-// but direct exporting after initialization should be sufficient.
+// Export a function to ensure initialization for server-side logic
 export const ensureFirebaseInitialized = () => {
-  if (!app) {
-     console.warn("Firebase app was not initialized. Re-initializing...");
+  if (!getApps().length) {
      initializeFirebase();
   }
-  return { app, auth, db, storage };
 };
+
+// Direct export of initialized services
+export { app, auth, db, storage };
