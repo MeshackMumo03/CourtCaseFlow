@@ -244,7 +244,7 @@ export default function AdminVerificationsPage() {
                             disabled={isSubmitting[`${lawyer.uid}-lawFirm-rejected`]}
                             className="text-xs"
                           >
-                             {isSubmitting[`${lawy.uid}-lawFirm-rejected`] ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3 mr-1" />} Reject Firm
+                             {isSubmitting[`${lawyer.uid}-lawFirm-rejected`] ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3 mr-1" />} Reject Firm
                           </Button>
                         </div>
                       )}
@@ -262,5 +262,7 @@ export default function AdminVerificationsPage() {
     </div>
   );
 }
+
+    
 
     
