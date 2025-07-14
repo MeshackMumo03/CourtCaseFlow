@@ -21,15 +21,13 @@ export interface UserProfile {
 export interface CaseDocument {
   id: string;
   name: string;
-  description?: string;
+  description: string;
   storagePath: string; // Path in Firebase Storage
   downloadURL: string;
   uploadedAt: Timestamp;
   uploaderUid: string; // UID of the lawyer who uploaded
   tags?: string[];
   mimeType?: string;
-  // version?: number; // For version control, future enhancement
-  // isLatest?: boolean; // For version control, future enhancement
 }
 
 export interface CaseFile {

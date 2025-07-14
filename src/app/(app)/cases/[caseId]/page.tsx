@@ -36,7 +36,8 @@ export default function CaseDetailPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [uploadedDocumentForTagging, setUploadedDocumentForTagging] = useState<{ dataUri: string; name: string; documentId: string } | null>(null);
+  const [uploadedDocumentForTagging, setUploadedDocumentForTagging] = useState<{ document: CaseDocument, dataUri: string } | null>(null);
+
 
   const getInitials = (name: string | null | undefined) => {
     if (!name) return "U";
@@ -168,14 +169,15 @@ export default function CaseDetailPage() {
   }
 
   const isLawyerOwner = userProfile?.role === 'lawyer' && userProfile.uid === caseFile.lawyerUid;
-
-  const handleDocumentUploaded = (dataUri: string, fileName: string, documentId: string) => {
-    setUploadedDocumentForTagging({ dataUri, name: fileName, documentId });
-    // Document list will refresh via onSnapshot
+  
+  const handleDocumentUploaded = (document: CaseDocument, dataUri: string) => {
+    // The onSnapshot listener will automatically update the document list.
+    // We just need to show the AI tagging tool.
+    setUploadedDocumentForTagging({ document, dataUri });
   };
   
-  const handleTagsApplied = (documentId: string, appliedTags: string[]) => {
-    setDocuments(prevDocs => prevDocs.map(doc => doc.id === documentId ? {...doc, tags: appliedTags} : doc));
+  const handleTagsApplied = () => {
+    // onSnapshot will handle the update, so we just close the tagging tool.
     setUploadedDocumentForTagging(null);
   };
 
@@ -359,7 +361,7 @@ export default function CaseDetailPage() {
                 <span className="ml-2">Loading documents...</span>
             </div>
           )}
-          {!loadingDocuments && documents.length === 0 && (
+          {!loadingDocuments && documents.length === 0 && !uploadedDocumentForTagging && (
             <div className="text-center py-10 border border-dashed rounded-md">
               <FileText className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
               <p className="text-lg font-semibold text-muted-foreground">No documents uploaded yet.</p>
@@ -414,10 +416,10 @@ export default function CaseDetailPage() {
           {uploadedDocumentForTagging && isLawyerOwner && (
             <div className="mt-4">
                 <AiTaggingTool
-                  documentName={uploadedDocumentForTagging.name}
+                  documentName={uploadedDocumentForTagging.document.name}
                   documentDataUri={uploadedDocumentForTagging.dataUri}
                   caseId={caseId}
-                  documentId={uploadedDocumentForTagging.documentId}
+                  documentId={uploadedDocumentForTagging.document.id}
                   onTagsApplied={handleTagsApplied}
                 />
             </div>

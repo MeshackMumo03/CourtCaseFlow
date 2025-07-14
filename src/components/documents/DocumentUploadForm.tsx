@@ -25,7 +25,9 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { useState } from 'react';
 import { Loader2, UploadCloud } from 'lucide-react';
-// import { uploadDocumentAction } from '@/actions/documents'; // Placeholder for actual upload server action
+import { uploadDocumentAction } from '@/actions/documents';
+import { useAuth } from '@/hooks/use-auth';
+import type { CaseDocument } from '@/types';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_FILE_TYPES = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/jpeg', 'image/png'];
@@ -47,11 +49,12 @@ type UploadFormValues = z.infer<typeof uploadFormSchema>;
 interface DocumentUploadFormProps {
   caseId: string;
   onClose: () => void;
-  onDocumentUploaded: (dataUri: string, fileName: string) => void; // Callback with data URI
+  onDocumentUploaded: (document: CaseDocument, dataUri: string) => void;
 }
 
 export function DocumentUploadForm({ caseId, onClose, onDocumentUploaded }: DocumentUploadFormProps) {
   const { toast } = useToast();
+  const { userProfile } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
 
   const form = useForm<UploadFormValues>({
@@ -61,48 +64,51 @@ export function DocumentUploadForm({ caseId, onClose, onDocumentUploaded }: Docu
       description: '', // Ensure description is initialized to an empty string
     },
   });
+  
+  const fileRef = form.register("document");
 
   const onSubmit = async (values: UploadFormValues) => {
     setIsLoading(true);
-    if (!values.document || values.document.length === 0) {
-        toast({ variant: 'destructive', title: 'File Error', description: 'No file selected.' });
+    if (!values.document || values.document.length === 0 || !userProfile) {
+        toast({ variant: 'destructive', title: 'Error', description: 'File or user information is missing.' });
         setIsLoading(false);
         return;
     }
     const file = values.document[0];
+    const formData = new FormData();
+    formData.append('document', file);
+    if (values.description) {
+        formData.append('description', values.description);
+    }
 
     try {
-      const reader = new FileReader();
-      
-      reader.onloadend = async () => {
-        try {
+      const result = await uploadDocumentAction(caseId, userProfile.uid, formData);
+
+      if (result.success && result.document) {
+         toast({
+          title: 'Document Uploaded',
+          description: `${file.name} is now stored and ready for AI tag suggestions.`,
+        });
+        
+        // Read file as data URI for AI tagging tool
+        const reader = new FileReader();
+        reader.onloadend = () => {
           const dataUri = reader.result as string;
-          
-          toast({
-            title: 'File Processed for Tagging',
-            description: `${file.name} is ready for AI tag suggestions.`,
-          });
-          onDocumentUploaded(dataUri, file.name); 
-          form.reset(); 
-        } catch (innerError) {
-          console.error('Error in reader.onloadend:', innerError);
-          toast({ variant: 'destructive', title: 'Processing Error', description: 'Failed to process file data.' });
-        } finally {
-          setIsLoading(false); 
-        }
-      };
+          onDocumentUploaded(result.document!, dataUri);
+          form.reset();
+          onClose();
+        };
+        reader.readAsDataURL(file);
 
-      reader.onerror = () => {
-        toast({ variant: 'destructive', title: 'File Read Error', description: 'Failed to read file.' });
-        setIsLoading(false); 
-      };
+      } else {
+         toast({ variant: 'destructive', title: 'Upload Failed', description: result.message });
+      }
 
-      reader.readAsDataURL(file);
-
-    } catch (error) {
+    } catch (error: any) {
       console.error('Upload error:', error);
-      toast({ variant: 'destructive', title: 'Upload Failed', description: 'Could not process the file.' });
-      setIsLoading(false); 
+      toast({ variant: 'destructive', title: 'Upload Failed', description: error.message || 'Could not upload the file.' });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -117,7 +123,7 @@ export function DocumentUploadForm({ caseId, onClose, onDocumentUploaded }: Docu
         <DialogHeader>
           <DialogTitle>Upload Document</DialogTitle>
           <DialogDescription>
-            Select a document to upload to case {caseId}. Max 5MB.
+            Select a document to upload to this case. Max 5MB.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -125,16 +131,13 @@ export function DocumentUploadForm({ caseId, onClose, onDocumentUploaded }: Docu
             <FormField
               control={form.control}
               name="document"
-              render={({ field: { onChange, value, ...rest } }) => ( // Exclude value from field for file input
+              render={() => (
                 <FormItem>
                   <FormLabel>Document File</FormLabel>
                   <FormControl>
                     <Input 
                       type="file" 
-                      onChange={(e) => {
-                        onChange(e.target.files);
-                      }}
-                      {...rest} 
+                      {...fileRef}
                       className="pt-2 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
                     />
                   </FormControl>
