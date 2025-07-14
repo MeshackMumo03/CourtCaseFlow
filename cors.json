@@ -1,7 +1,7 @@
 
 [
   {
-    "origin": ["*"],
+    "origin": ["https://6000-firebase-studio-1747636018151.cluster-3gc7bglotjgwuxlqpiut7yyqt4.cloudworkstations.dev"],
     "method": ["GET", "POST", "PUT", "HEAD"],
     "responseHeader": ["Content-Type", "Access-Control-Allow-Origin"],
     "maxAgeSeconds": 3600
