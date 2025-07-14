@@ -9,7 +9,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyBMcZTemZQQ01oU5jpKu6GcI3spdaIKNjM",
   authDomain: "caselink-skc52.firebaseapp.com",
   projectId: "caselink-skc52",
-  storageBucket: "caselink-skc52.appspot.com", // Corrected to .appspot.com
+  storageBucket: "caselink-skc52.appspot.com",
   messagingSenderId: "798746625437",
   appId: "1:798746625437:web:f2b0f0281d9bd601b61b74"
 };
