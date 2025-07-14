@@ -19,29 +19,31 @@ let auth: Auth;
 let db: Firestore;
 let storage: FirebaseStorage;
 
-function initializeServices() {
-    if (!getApps().length) {
-        app = initializeApp(firebaseConfig);
-    } else {
-        app = getApp();
-    }
-    auth = getAuth(app);
-    db = getFirestore(app);
-    storage = getStorage(app);
+
+// This function ensures that we initialize the app only once.
+function initializeFirebase() {
+  if (!getApps().length) {
+    app = initializeApp(firebaseConfig);
+  } else {
+    app = getApp();
+  }
+  auth = getAuth(app);
+  db = getFirestore(app);
+  storage = getStorage(app);
 }
 
-// Initialize services on module load.
-// This ensures that Firebase is ready whenever any of these exports are imported.
-initializeServices();
+// Call the function to ensure services are initialized.
+initializeFirebase();
 
+// Export the initialized services.
 export { app, auth, db, storage };
 
-// This function ensures that if this module is imported in different parts of the app
-// (e.g., client-side and server-side), the services are consistently initialized and available.
+// This function can be used to ensure initialization has occurred if needed,
+// but direct exporting after initialization should be sufficient.
 export const ensureFirebaseInitialized = () => {
   if (!app) {
-     console.warn("ensureFirebaseInitialized called when Firebase app was not available. Re-initializing...");
-     initializeServices();
+     console.warn("Firebase app was not initialized. Re-initializing...");
+     initializeFirebase();
   }
   return { app, auth, db, storage };
 };
