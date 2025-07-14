@@ -48,7 +48,14 @@ export default function AllCasesPage() {
         querySnapshot.forEach((doc) => {
           fetchedCases.push({ id: doc.id, ...doc.data() } as CaseFile);
         });
-        setCases(fetchedCases.sort((a,b) => b.createdAt.toMillis() - a.createdAt.toMillis())); // Sort by newest first
+        
+        // Sort by newest first, with a check for missing timestamps
+        const sortedCases = fetchedCases.sort((a, b) => {
+          const timeA = a.createdAt?.toMillis() || 0;
+          const timeB = b.createdAt?.toMillis() || 0;
+          return timeB - timeA;
+        });
+        setCases(sortedCases);
       } catch (err) {
         console.error('Error fetching cases:', err);
         setError('Failed to load cases.');
