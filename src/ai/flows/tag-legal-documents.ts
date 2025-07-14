@@ -42,7 +42,8 @@ Description: {{{documentDescription}}}
 Document: {{media url=documentDataUri}}
 
 Please provide an array of suggested tags that can be used to categorize this document.
-`,config: {
+`,
+  config: {
     safetySettings: [
       {
         category: 'HARM_CATEGORY_HATE_SPEECH',
