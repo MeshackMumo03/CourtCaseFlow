@@ -33,23 +33,31 @@ export default function HearingsPage() {
       setError(null);
       try {
         let q;
+        // Simplify the query to only filter by user, not by date.
+        // Date filtering and sorting will happen on the client-side.
         if (userProfile.role === 'lawyer') {
-          q = query(collection(db, 'cases'), where('lawyerUid', '==', userProfile.uid), where('hearingDate', '>=', Timestamp.now()), orderBy('hearingDate', 'asc'));
+          q = query(collection(db, 'cases'), where('lawyerUid', '==', userProfile.uid));
         } else { // client
-          q = query(collection(db, 'cases'), where('clientEmail', '==', userProfile.email), where('hearingDate', '>=', Timestamp.now()), orderBy('hearingDate', 'asc'));
+          q = query(collection(db, 'cases'), where('clientEmail', '==', userProfile.email));
         }
         
         const querySnapshot = await getDocs(q);
-        const fetchedHearings: CaseFile[] = [];
+        const allUserCases: CaseFile[] = [];
         querySnapshot.forEach((doc) => {
-          fetchedHearings.push({ id: doc.id, ...doc.data() } as CaseFile);
+          allUserCases.push({ id: doc.id, ...doc.data() } as CaseFile);
         });
         
-        setUpcomingHearings(fetchedHearings);
+        // Now, filter and sort on the client-side
+        const now = Timestamp.now();
+        const futureHearings = allUserCases
+          .filter(c => c.hearingDate && c.hearingDate instanceof Timestamp && c.hearingDate.toMillis() >= now.toMillis())
+          .sort((a, b) => (a.hearingDate as Timestamp).toMillis() - (b.hearingDate as Timestamp).toMillis());
+
+        setUpcomingHearings(futureHearings);
 
       } catch (err: any) {
         console.error("Error fetching hearings:", err);
-        setError("Failed to load upcoming hearings. This may be due to a missing database index. Check the browser console for a link to create it.");
+        setError("Failed to load upcoming hearings. Please try again.");
       } finally {
         setLoadingHearings(false);
       }
