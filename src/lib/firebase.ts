@@ -19,53 +19,42 @@ let auth: Auth;
 let db: Firestore;
 let storage: FirebaseStorage;
 
-// Initialize Firebase
-if (!getApps().length) {
-  try {
-    app = initializeApp(firebaseConfig);
-  } catch (error: any) {
-    console.error("Error initializing Firebase app with hardcoded config:", error.message);
-    throw new Error(`Failed to initialize Firebase app: ${error.message}.`);
-  }
-} else {
-  app = getApp();
+function initializeServices() {
+    if (!getApps().length) {
+        try {
+            app = initializeApp(firebaseConfig);
+        } catch (error: any) {
+            console.error("Error initializing Firebase app with hardcoded config:", error.message);
+            throw new Error(`Failed to initialize Firebase app: ${error.message}.`);
+        }
+    } else {
+        app = getApp();
+    }
+
+    try {
+        auth = getAuth(app);
+        db = getFirestore(app);
+        storage = getStorage(app);
+    } catch (error: any) {
+        console.error("Error getting Firebase services (Auth, Firestore, Storage):", error.message);
+        throw new Error(`Failed to get Firebase services: ${error.message}.`);
+    }
 }
 
-try {
-  auth = getAuth(app);
-  db = getFirestore(app);
-  storage = getStorage(app);
-} catch (error: any) {
-   console.error("Error getting Firebase services (Auth, Firestore, Storage):", error.message);
-  // This might indicate a deeper issue with the initialized app instance or config
-  throw new Error(`Failed to get Firebase services: ${error.message}.`);
-}
+// Initialize services on module load
+initializeServices();
 
 export { app, auth, db, storage };
 
 // This function can still be useful if other parts of the app call it,
 // but its primary role of dynamic initialization is reduced with hardcoded config.
 export const ensureFirebaseInitialized = () => {
-  if (!app || getApps().length === 0) {
-    // This block should ideally not be hit if the above initialization works.
-    console.warn("ensureFirebaseInitialized called when Firebase app was not available or not initialized. This indicates a problem with the initial setup.");
-    // Attempt re-initialization, though it's unlikely to succeed if the first attempt failed with hardcoded values.
-     if (!getApps().length) {
-        try {
-            app = initializeApp(firebaseConfig);
-            auth = getAuth(app);
-            db = getFirestore(app);
-            storage = getStorage(app);
-        } catch (error: any) {
-            console.error("Re-initialization attempt in ensureFirebaseInitialized failed:", (error as Error).message);
-            throw error;
-        }
-    } else {
-        app = getApp();
-        auth = getAuth(app); // Ensure auth, db, storage are re-assigned if app was re-fetched
-        db = getFirestore(app);
-        storage = getStorage(app);
-    }
+  // Services are already initialized, so this function mainly ensures they are exported correctly.
+  // This can be simplified or removed if not strictly necessary elsewhere,
+  // but it's safe to keep for compatibility.
+  if (!app) {
+     console.warn("ensureFirebaseInitialized called when Firebase app was not available. Re-initializing...");
+     initializeServices();
   }
   return { app, auth, db, storage };
 };
