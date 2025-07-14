@@ -32,7 +32,7 @@ const navItems: NavItem[] = [
   { href: "/cases/create", label: "New Case", icon: PlusCircle, roles: ['lawyer'] },
   { href: "/cases", label: "All Cases", icon: Briefcase, roles: ['lawyer'] },
   { href: "/hearings", label: "Hearings", icon: CalendarDays, roles: ['lawyer', 'client'] },
-  // { href: "/clients", label: "Clients", icon: Users, roles: ['lawyer'], disabled: true }, // Example of a disabled link
+  { href: "/clients", label: "Clients", icon: Users, roles: ['lawyer'], disabled: true },
   { href: "/dashboard/settings", label: "Settings", icon: Settings, roles: ['lawyer', 'client', 'admin'] },
   { href: "/admin/verifications", label: "Admin Verifications", icon: ShieldQuestion, roles: ['admin'], adminOnly: true },
 ];
@@ -86,7 +86,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const accessibleNavItems = navItems.filter(item => 
     item.roles.includes(currentUserRole) && 
-    !item.disabled &&
     (item.adminOnly ? isAdmin : true)
   );
 
@@ -100,7 +99,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {accessibleNavItems.map((item) => (
             <Link key={item.label} href={item.href} legacyBehavior passHref>
               <a
-                onClick={() => setIsSidebarOpen(false)}
+                onClick={() => {
+                  if (!item.disabled) {
+                    setIsSidebarOpen(false);
+                  }
+                }}
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary hover:bg-accent/50",
                   pathname === item.href && "bg-accent text-primary font-semibold",
@@ -108,6 +111,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 )}
                 aria-disabled={item.disabled}
                 tabIndex={item.disabled ? -1 : undefined}
+                // Prevent click action for disabled items
+                onClickCapture={item.disabled ? (e) => e.preventDefault() : undefined}
               >
                 <item.icon className="h-5 w-5" />
                 {item.label}
@@ -160,7 +165,3 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
-
-// Loader2 component was removed as it was named IconLoader from lucide-react
-// If you need a specific Loader2 component, it should be defined elsewhere or imported.
-// For now, lucide-react's Loader2 is aliased as IconLoader to avoid naming conflicts.
