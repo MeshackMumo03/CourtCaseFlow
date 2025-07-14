@@ -27,7 +27,8 @@ export default function DashboardPage() {
     try {
       let q;
       if (userProfile.role === 'lawyer') {
-        q = query(collection(db, 'cases'), where('lawyerUid', '==', userProfile.uid), orderBy('createdAt', 'desc'));
+        // Removed orderBy to prevent index error. Sorting will be done client-side.
+        q = query(collection(db, 'cases'), where('lawyerUid', '==', userProfile.uid));
       } else { // client
         // Removed orderBy to prevent index error. Sorting will be done client-side.
         q = query(collection(db, 'cases'), where('clientEmail', '==', userProfile.email));
