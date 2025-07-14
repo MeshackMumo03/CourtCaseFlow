@@ -61,6 +61,13 @@ export async function uploadDocumentAction(
     return { success: true, message: 'Document uploaded successfully.', document: createdDocument };
   } catch (error: any) {
     console.error('Error uploading document:', error);
+     if (error.code === 'storage/unknown') {
+      return {
+        success: false,
+        message:
+          'Firebase Storage (storage/unknown) error. This is often a CORS configuration issue. Please check your bucket\'s CORS settings in the Google Cloud console. Your app\'s domain must be listed as an allowed origin.',
+      };
+    }
     return { success: false, message: error.message || 'Failed to upload document.' };
   }
 }
