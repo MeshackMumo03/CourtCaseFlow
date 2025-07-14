@@ -4,7 +4,7 @@ import { getAuth, Auth } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
 
-// Your web app's Firebase configuration (Hardcoded as per previous step)
+// Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyBMcZTemZQQ01oU5jpKu6GcI3spdaIKNjM",
   authDomain: "caselink-skc52.firebaseapp.com",
@@ -21,37 +21,24 @@ let storage: FirebaseStorage;
 
 function initializeServices() {
     if (!getApps().length) {
-        try {
-            app = initializeApp(firebaseConfig);
-        } catch (error: any) {
-            console.error("Error initializing Firebase app with hardcoded config:", error.message);
-            throw new Error(`Failed to initialize Firebase app: ${error.message}.`);
-        }
+        app = initializeApp(firebaseConfig);
     } else {
         app = getApp();
     }
-
-    try {
-        auth = getAuth(app);
-        db = getFirestore(app);
-        storage = getStorage(app);
-    } catch (error: any) {
-        console.error("Error getting Firebase services (Auth, Firestore, Storage):", error.message);
-        throw new Error(`Failed to get Firebase services: ${error.message}.`);
-    }
+    auth = getAuth(app);
+    db = getFirestore(app);
+    storage = getStorage(app);
 }
 
-// Initialize services on module load
+// Initialize services on module load.
+// This ensures that Firebase is ready whenever any of these exports are imported.
 initializeServices();
 
 export { app, auth, db, storage };
 
-// This function can still be useful if other parts of the app call it,
-// but its primary role of dynamic initialization is reduced with hardcoded config.
+// This function ensures that if this module is imported in different parts of the app
+// (e.g., client-side and server-side), the services are consistently initialized and available.
 export const ensureFirebaseInitialized = () => {
-  // Services are already initialized, so this function mainly ensures they are exported correctly.
-  // This can be simplified or removed if not strictly necessary elsewhere,
-  // but it's safe to keep for compatibility.
   if (!app) {
      console.warn("ensureFirebaseInitialized called when Firebase app was not available. Re-initializing...");
      initializeServices();
