@@ -25,6 +25,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -330,13 +331,13 @@ export default function SettingsPage() {
                         />
                      </div>
                 </div>
-                 <AlertDialogFooter>
+                 <DialogFooter>
                     <Button variant="ghost" onClick={() => setIs2FADialogOpen(false)}>Cancel</Button>
                     <Button onClick={handleEnable2FASimulated} disabled={isActivating2FA}>
                         {isActivating2FA && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                         Verify & Enable
                     </Button>
-                </AlertDialogFooter>
+                </DialogFooter>
               </DialogContent>
             </Dialog>
              <p className="text-xs text-muted-foreground mt-1">
