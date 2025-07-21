@@ -1,13 +1,12 @@
 
 'use client';
 
-import { Button, buttonVariants } from "@/components/ui/button"; // Ensure buttonVariants is imported if needed, or cva if buttonVariants is defined locally
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Separator } from "@/components/ui/separator";
-import { Loader2, SettingsIcon, Bell, Palette, ShieldAlert, Trash2, Briefcase, CalendarClock, QrCode } from "lucide-react";
+import { Loader2, Bell, Palette, ShieldAlert, Trash2, Briefcase, CalendarClock, QrCode } from "lucide-react";
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -32,11 +31,12 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
-import { cva } from "class-variance-authority"; // Added import for cva
+import { cva } from "class-variance-authority";
 import Image from "next/image";
+import { EmailAuthProvider, reauthenticateWithCredential, updatePassword, deleteUser } from "firebase/auth";
 
 export default function SettingsPage() {
-  const { userProfile, loading: authLoading, setUserProfile } = useAuth();
+  const { user, userProfile, loading: authLoading, setUserProfile } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
   
@@ -45,14 +45,23 @@ export default function SettingsPage() {
   const [caseUpdatesEnabled, setCaseUpdatesEnabled] = useState(true);
 
   const [darkMode, setDarkMode] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
   
+  // State for password change
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+  
+  // State for 2FA
   const [isActivating2FA, setIsActivating2FA] = useState(false);
   const [twoFaCode, setTwoFaCode] = useState("");
-  const [is2FAEnabled, setIs2FAEnabled] = useState(false); // Simulated state
+  const [is2FAEnabled, setIs2FAEnabled] = useState(false);
   const [is2FADialogOpen, setIs2FADialogOpen] = useState(false);
-
+  
+  // State for account deletion
+  const [deletePasswordConfirm, setDeletePasswordConfirm] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isDeleteDialogContentOpen, setIsDeleteDialogContentOpen] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !userProfile) {
@@ -81,7 +90,6 @@ export default function SettingsPage() {
 
   const handleNotificationChange = (setter: React.Dispatch<React.SetStateAction<boolean>>, key: string) => (checked: boolean) => {
     setter(checked);
-    // Save to localStorage for UI persistence (no backend yet)
     try {
         const currentSettings = JSON.parse(localStorage.getItem('notificationSettings') || '{}');
         currentSettings[key] = checked;
@@ -103,28 +111,39 @@ export default function SettingsPage() {
     }
   };
 
-  const handleSimulatedDeleteAccount = async () => {
-    setIsDeleting(true);
-    // Simulate some async work
-    await new Promise(resolve => setTimeout(resolve, 1500));
+  const reauthenticate = async (password: string) => {
+    if (!user || !user.email) throw new Error("User not found or email is missing.");
+    const credential = EmailAuthProvider.credential(user.email, password);
+    await reauthenticateWithCredential(user, credential);
+    return user;
+  };
 
-    toast({
-      title: "Account Deletion (Simulated)",
-      description: "Full account data deletion is not yet implemented. Signing you out.",
-      duration: 5000,
-    });
+  const handleUpdatePassword = async () => {
+    if (newPassword !== confirmPassword) {
+      toast({ variant: "destructive", title: "Passwords do not match." });
+      return;
+    }
+    if (newPassword.length < 6) {
+        toast({ variant: "destructive", title: "Password too short", description: "New password must be at least 6 characters." });
+        return;
+    }
+    
+    setIsUpdatingPassword(true);
     try {
-      await auth.signOut();
-      setUserProfile(null); 
-      router.push('/login');
-    } catch (error) {
-      toast({ variant: 'destructive', title: 'Sign Out Failed', description: 'Could not sign out after simulated deletion.' });
+      const reauthenticatedUser = await reauthenticate(currentPassword);
+      await updatePassword(reauthenticatedUser, newPassword);
+      toast({ title: "Password Updated", description: "Your password has been changed successfully." });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (error: any) {
+      console.error("Password update error:", error);
+      toast({ variant: "destructive", title: "Update Failed", description: error.code === 'auth/wrong-password' ? 'The current password you entered is incorrect.' : error.message });
     } finally {
-      setIsDeleting(false);
-      setShowDeleteConfirm(false);
+      setIsUpdatingPassword(false);
     }
   };
-  
+
   const handleEnable2FASimulated = async () => {
       if (twoFaCode.length !== 6) {
           toast({variant: 'destructive', title: 'Invalid Code', description: 'Please enter a 6-digit code.'});
@@ -137,7 +156,23 @@ export default function SettingsPage() {
       setIs2FADialogOpen(false);
       setTwoFaCode("");
       toast({title: '2FA Enabled', description: 'Two-factor authentication has been successfully enabled on your account.'})
-  }
+  };
+  
+  const handleDeleteAccount = async () => {
+    setIsDeleting(true);
+    try {
+      const reauthenticatedUser = await reauthenticate(deletePasswordConfirm);
+      await deleteUser(reauthenticatedUser);
+      toast({ title: "Account Deleted", description: "Your account has been permanently deleted." });
+      router.push("/login");
+    } catch (error: any) {
+      console.error("Account deletion error:", error);
+      toast({ variant: "destructive", title: "Deletion Failed", description: error.code === 'auth/wrong-password' ? 'The password you entered is incorrect.' : error.message });
+    } finally {
+      setIsDeleting(false);
+      setIsDeleteDialogContentOpen(false);
+    }
+  };
 
 
   if (authLoading || !userProfile) {
@@ -150,7 +185,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="space-y-8 max-w-3xl mx-auto">
+    <div className="space-y-8 max-w-3xl mx-auto pb-12">
       <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
 
       <Card>
@@ -242,13 +277,24 @@ export default function SettingsPage() {
           <CardDescription>Manage your account security settings.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-           <div className="space-y-2 p-4 border rounded-lg">
-            <h4 className="font-medium mb-1">Change Password</h4>
-            <Input id="current-password" type="password" placeholder="Current Password" disabled />
-            <Input id="new-password" type="password" placeholder="New Password" disabled />
-            <Input id="confirm-password" type="password" placeholder="Confirm New Password" disabled />
-            <Button disabled>Update Password</Button>
-            <p className="text-xs text-muted-foreground">Password change functionality is not yet implemented.</p>
+           <div className="space-y-4 p-4 border rounded-lg">
+            <h4 className="font-medium">Change Password</h4>
+            <div className="space-y-2">
+                <Label htmlFor="current-password">Current Password</Label>
+                <Input id="current-password" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} disabled={isUpdatingPassword} />
+            </div>
+             <div className="space-y-2">
+                <Label htmlFor="new-password">New Password</Label>
+                <Input id="new-password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} disabled={isUpdatingPassword} />
+            </div>
+            <div className="space-y-2">
+                <Label htmlFor="confirm-password">Confirm New Password</Label>
+                <Input id="confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} disabled={isUpdatingPassword} />
+            </div>
+            <Button onClick={handleUpdatePassword} disabled={isUpdatingPassword || !currentPassword || !newPassword || !confirmPassword}>
+                {isUpdatingPassword && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Update Password
+            </Button>
           </div>
           
           <div className="p-4 border rounded-lg">
@@ -305,47 +351,52 @@ export default function SettingsPage() {
             <CardTitle className="flex items-center gap-2 text-destructive">
                 <Trash2 className="h-5 w-5"/> Danger Zone
             </CardTitle>
-            <CardDescription>Manage irreversible account actions.</CardDescription>
+            <CardDescription>This action is irreversible. Please proceed with caution.</CardDescription>
         </CardHeader>
         <CardContent>
-            <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-                <AlertDialogTrigger asChild>
-                    <Button variant="destructive" disabled={isDeleting}>Delete Account</Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                        This action cannot be undone. This will simulate deleting your account
-                        and sign you out. Full data wipe is not yet implemented.
-                    </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                    <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleSimulatedDeleteAccount} disabled={isDeleting} className={localButtonVariants({variant: "destructive"})}>
-                        {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Yes, delete account (simulated)
-                    </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
-            <p className="text-xs text-muted-foreground mt-2">
-                Account deletion is currently simulated (signs you out).
-                Full data removal from the database is not yet implemented.
-            </p>
+            <Dialog open={isDeleteDialogContentOpen} onOpenChange={setIsDeleteDialogContentOpen}>
+                <DialogTrigger asChild>
+                    <Button variant="destructive" disabled={isDeleting}>Delete My Account</Button>
+                </DialogTrigger>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Are you absolutely sure?</DialogTitle>
+                        <DialogDescription>
+                            This action cannot be undone. This will permanently delete your
+                            account and remove your data from our servers. To confirm, please type your password.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4 space-y-2">
+                        <Label htmlFor="delete-confirm-password">Password</Label>
+                        <Input
+                            id="delete-confirm-password"
+                            type="password"
+                            placeholder="••••••••"
+                            value={deletePasswordConfirm}
+                            onChange={(e) => setDeletePasswordConfirm(e.target.value)}
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsDeleteDialogContentOpen(false)} disabled={isDeleting}>Cancel</Button>
+                        <Button
+                            variant="destructive"
+                            onClick={handleDeleteAccount}
+                            disabled={isDeleting || !deletePasswordConfirm}
+                        >
+                            {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Delete Account Permanently
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </CardContent>
       </Card>
-      
-      {/* <div className="flex justify-end mt-8">
-        <Button disabled>Save All Settings</Button>
-         <p className="text-xs text-muted-foreground ml-2 mt-1">Saving settings is not yet implemented globally.</p>
-      </div> */}
+
     </div>
   );
 }
 
 // Helper for buttonVariants in AlertDialogAction
-// Renamed to localButtonVariants to avoid conflict if buttonVariants is also imported from ui/button
 const localButtonVariants = cva(
   "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
   {
@@ -374,6 +425,3 @@ const localButtonVariants = cva(
     },
   }
 );
-
-
-
