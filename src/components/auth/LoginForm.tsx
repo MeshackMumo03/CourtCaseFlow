@@ -22,7 +22,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 
 const formSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
@@ -94,7 +94,15 @@ export function LoginForm() {
               name="password"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Password</FormLabel>
+                    <div className="flex items-center justify-between">
+                        <FormLabel>Password</FormLabel>
+                        <Link
+                            href="/forgot-password"
+                            className="text-sm font-medium text-primary hover:underline"
+                        >
+                            Forgot password?
+                        </Link>
+                    </div>
                   <FormControl>
                     <div className="relative">
                       <Input type={showPassword ? "text" : "password"} placeholder="••••••••" {...field} />
@@ -119,13 +127,15 @@ export function LoginForm() {
             </Button>
           </form>
         </Form>
-        <p className="mt-6 text-center text-sm text-muted-foreground">
-          Don&apos;t have an account?{" "}
-          <Link href="/signup" className="font-medium text-primary hover:underline">
-            Sign up
-          </Link>
-        </p>
-      </CardContent>
+        </CardContent>
+        <CardFooter>
+            <p className="mt-6 text-center text-sm text-muted-foreground w-full">
+            Don&apos;t have an account?{" "}
+            <Link href="/signup" className="font-medium text-primary hover:underline">
+                Sign up
+            </Link>
+            </p>
+        </CardFooter>
     </Card>
   );
 }
