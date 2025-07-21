@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, SettingsIcon, Bell, Palette, ShieldAlert, Trash2, Briefcase, CalendarClock } from "lucide-react";
+import { Loader2, SettingsIcon, Bell, Palette, ShieldAlert, Trash2, Briefcase, CalendarClock, QrCode } from "lucide-react";
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -22,9 +22,18 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { cva } from "class-variance-authority"; // Added import for cva
+import Image from "next/image";
 
 export default function SettingsPage() {
   const { userProfile, loading: authLoading, setUserProfile } = useAuth();
@@ -38,6 +47,11 @@ export default function SettingsPage() {
   const [darkMode, setDarkMode] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  
+  const [isActivating2FA, setIsActivating2FA] = useState(false);
+  const [twoFaCode, setTwoFaCode] = useState("");
+  const [is2FAEnabled, setIs2FAEnabled] = useState(false); // Simulated state
+  const [is2FADialogOpen, setIs2FADialogOpen] = useState(false);
 
 
   useEffect(() => {
@@ -110,6 +124,20 @@ export default function SettingsPage() {
       setShowDeleteConfirm(false);
     }
   };
+  
+  const handleEnable2FASimulated = async () => {
+      if (twoFaCode.length !== 6) {
+          toast({variant: 'destructive', title: 'Invalid Code', description: 'Please enter a 6-digit code.'});
+          return;
+      }
+      setIsActivating2FA(true);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      setIsActivating2FA(false);
+      setIs2FAEnabled(true);
+      setIs2FADialogOpen(false);
+      setTwoFaCode("");
+      toast({title: '2FA Enabled', description: 'Two-factor authentication has been successfully enabled on your account.'})
+  }
 
 
   if (authLoading || !userProfile) {
@@ -225,9 +253,49 @@ export default function SettingsPage() {
           
           <div className="p-4 border rounded-lg">
             <h4 className="font-medium mb-2">Two-Factor Authentication (2FA)</h4>
-            <p className="text-sm text-muted-foreground mb-3">Add an extra layer of security to your account.</p>
-            <Button variant="outline" disabled>Setup 2FA</Button>
-             <p className="text-xs text-muted-foreground mt-1">2FA is not yet implemented.</p>
+            <p className="text-sm text-muted-foreground mb-3">
+              {is2FAEnabled ? "2FA is currently enabled on your account." : "Add an extra layer of security to your account."}
+            </p>
+            <Dialog open={is2FADialogOpen} onOpenChange={setIs2FADialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" disabled={is2FAEnabled}>
+                  {is2FAEnabled ? "2FA Enabled" : "Setup 2FA"}
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Setup Two-Factor Authentication</DialogTitle>
+                    <DialogDescription>Scan the QR code with your authenticator app, then enter the code below to verify.</DialogDescription>
+                </DialogHeader>
+                <div className="flex flex-col items-center gap-4 py-4">
+                    <Image src="https://placehold.co/200x200.png" alt="QR Code" width={200} height={200} data-ai-hint="qr code"/>
+                    <div className="text-center">
+                        <p className="text-sm text-muted-foreground">Can't scan? Enter this code manually:</p>
+                        <p className="font-mono text-lg tracking-widest bg-muted p-2 rounded-md">ABCD EFGH IJKL MNOP</p>
+                    </div>
+                     <div className="w-full max-w-xs space-y-2">
+                        <Label htmlFor="2fa-code">Verification Code</Label>
+                        <Input 
+                            id="2fa-code" 
+                            placeholder="123456" 
+                            maxLength={6}
+                            value={twoFaCode}
+                            onChange={(e) => setTwoFaCode(e.target.value)}
+                        />
+                     </div>
+                </div>
+                 <AlertDialogFooter>
+                    <Button variant="ghost" onClick={() => setIs2FADialogOpen(false)}>Cancel</Button>
+                    <Button onClick={handleEnable2FASimulated} disabled={isActivating2FA}>
+                        {isActivating2FA && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                        Verify & Enable
+                    </Button>
+                </AlertDialogFooter>
+              </DialogContent>
+            </Dialog>
+             <p className="text-xs text-muted-foreground mt-1">
+                {is2FAEnabled ? "Disabling 2FA is not yet implemented." : "This is a simulated 2FA setup flow."}
+             </p>
           </div>
         </CardContent>
       </Card>
@@ -306,5 +374,6 @@ const localButtonVariants = cva(
     },
   }
 );
+
 
 
