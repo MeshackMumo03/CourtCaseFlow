@@ -1,10 +1,11 @@
 
 'use server';
 
-import { Timestamp, doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import { Timestamp, doc, serverTimestamp, setDoc, updateDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { UserProfile } from '@/types';
 import type { PartialDeep } from 'type-fest'; 
+import { type User as FirebaseUser } from 'firebase/auth';
 
 interface ActionResult {
   success: boolean;
@@ -153,5 +154,50 @@ export async function updateUserProfileDetails(
   } catch (error: any) {
     console.error('[updateUserProfileDetails] Error:', error);
     return { success: false, message: error.message || 'Failed to update profile in database.' };
+  }
+}
+
+export async function handleGoogleSignInAction(firebaseUser: FirebaseUser): Promise<ActionResult> {
+  const { uid, email, displayName, photoURL } = firebaseUser;
+
+  if (!email) {
+    return { success: false, message: "Google account did not provide an email." };
+  }
+
+  const userDocRef = doc(db, 'users', uid);
+
+  try {
+    const userDocSnap = await getDoc(userDocRef);
+
+    if (userDocSnap.exists()) {
+      // User profile already exists, just return success
+      const existingProfile = userDocSnap.data() as UserProfile;
+      return { success: true, message: 'User logged in successfully.', userId: uid, createdProfile: existingProfile };
+    } else {
+      // New user, create a profile for them. Defaulting to 'client'.
+      // A real-world app might have a second step to ask for role.
+      const newUserProfile: Omit<UserProfile, 'createdAt'> & { createdAt: any } = {
+        uid,
+        email,
+        displayName: displayName || 'New User',
+        role: 'client', // Default role for Google Sign-In
+        createdAt: serverTimestamp(),
+        photoURL: photoURL || undefined,
+        lskVerificationStatus: 'unverified',
+        lawFirmVerificationStatus: 'unverified'
+      };
+
+      await setDoc(userDocRef, newUserProfile);
+      
+      const createdProfileForContext: UserProfile = {
+        ...newUserProfile,
+        createdAt: Timestamp.now()
+      } as UserProfile;
+
+      return { success: true, message: 'New user profile created successfully.', userId: uid, createdProfile: createdProfileForContext };
+    }
+  } catch (error: any) {
+    console.error('Error during Google Sign-In profile handling:', error);
+    return { success: false, message: error.message || 'Failed to handle user profile.' };
   }
 }
