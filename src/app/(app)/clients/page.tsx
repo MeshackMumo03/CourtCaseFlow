@@ -141,6 +141,7 @@ export default function ClientsPage() {
                   <TableHead>Client</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Active Cases</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -158,6 +159,14 @@ export default function ClientsPage() {
                     <TableCell>{client.email}</TableCell>
                     <TableCell>
                       <Badge variant="secondary">{client.caseCount}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                        <Button asChild variant="outline" size="sm">
+                            <Link href={`/clients/${encodeURIComponent(client.email)}`}>
+                                <Eye className="mr-2 h-4 w-4" />
+                                View Details
+                            </Link>
+                        </Button>
                     </TableCell>
                   </TableRow>
                 ))}
