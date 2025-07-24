@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Users, Loader2, AlertTriangle, Eye } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 interface ClientInfo {
   name: string;
