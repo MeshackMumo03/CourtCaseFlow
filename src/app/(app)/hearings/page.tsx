@@ -14,6 +14,20 @@ import Image from "next/image";
 import Link from "next/link";
 import { Separator } from "@/components/ui/separator";
 
+function convertToTimestamp(date: any): Timestamp | null {
+  if (date instanceof Timestamp) {
+    return date;
+  }
+  if (date && typeof date.seconds === 'number' && typeof date.nanoseconds === 'number') {
+    return new Timestamp(date.seconds, date.nanoseconds);
+  }
+  if (date instanceof Date) {
+    return Timestamp.fromDate(date);
+  }
+  return null;
+}
+
+
 export default function HearingsPage() {
   const { userProfile, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -47,9 +61,12 @@ export default function HearingsPage() {
           allUserCases.push({ id: doc.id, ...doc.data() } as CaseFile);
         });
         
-        // Filter and sort on the client-side
         const now = Timestamp.now();
-        const casesWithDates = allUserCases.filter(c => c.hearingDate && c.hearingDate instanceof Timestamp);
+        const casesWithDates = allUserCases.map(c => ({
+          ...c,
+          hearingDate: convertToTimestamp(c.hearingDate)
+        })).filter(c => c.hearingDate !== null);
+
 
         const futureHearings = casesWithDates
           .filter(c => (c.hearingDate as Timestamp).toMillis() >= now.toMillis())
@@ -85,7 +102,7 @@ export default function HearingsPage() {
   }
 
   const HearingListItem = ({ hearing }: { hearing: CaseFile }) => {
-    const hearingDate = hearing.hearingDate instanceof Timestamp ? hearing.hearingDate.toDate() : null;
+    const hearingDate = hearing.hearingDate ? (hearing.hearingDate as Timestamp).toDate() : null;
     
     return (
      <li className="p-4 rounded-md border hover:bg-accent/50 transition-colors">

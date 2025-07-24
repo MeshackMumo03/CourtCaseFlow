@@ -412,9 +412,9 @@ export default function CaseDetailPage() {
                             placeholder={userProfile?.role === 'lawyer' ? "Post an update for your client..." : "Type your message..."}
                             value={newComment}
                             onChange={(e) => setNewComment(e.target.value)}
-                            disabled={isPostingComment || userProfile?.role !== 'lawyer'}
+                            disabled={isPostingComment}
                         />
-                        <Button onClick={handlePostComment} disabled={isPostingComment || !newComment.trim() || userProfile?.role !== 'lawyer'}>
+                        <Button onClick={handlePostComment} disabled={isPostingComment || !newComment.trim()}>
                             {isPostingComment ? <Loader2 className="animate-spin" /> : <Send />}
                         </Button>
                     </div>
