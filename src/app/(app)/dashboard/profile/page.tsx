@@ -21,10 +21,6 @@ import { Textarea } from '@/components/ui/textarea';
 import * as z from 'zod';
 import { Badge } from '@/components/ui/badge';
 
-const phoneRegex = new RegExp(
-  /^([+]?[\s0-9]+)?(\d{3}|[(]?[0-9]+[)])?([-]?[\s]?[0-9])+$/
-);
-
 export default function ProfilePage() {
   const { user, userProfile, loading: authLoading, setUserProfile } = useAuth();
   const router = useRouter();
@@ -113,7 +109,7 @@ export default function ProfilePage() {
     const detailsToUpdate: Partial<UserProfile> = {};
     
     if (phoneNumber !== initialProfileState.phoneNumber) {
-        if (phoneNumber && !phoneRegex.test(phoneNumber)) {
+        if (phoneNumber && phoneNumber.length < 10) {
             toast({ variant: 'destructive', title: 'Invalid Phone Number', description: 'Please enter a valid phone number.'});
             return;
         }

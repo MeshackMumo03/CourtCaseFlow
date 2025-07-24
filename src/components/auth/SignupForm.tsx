@@ -27,7 +27,6 @@ import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase"; // Client-side auth
 import { useAuth } from "@/hooks/use-auth";
 import { Textarea } from "../ui/textarea";
-import { Separator } from "../ui/separator";
 
 const formSchema = z.object({
   displayName: z.string().min(2, { message: "Display name must be at least 2 characters." }),
@@ -35,34 +34,10 @@ const formSchema = z.object({
   password: z.string().min(6, { message: "Password must be at least 6 characters." }),
   phoneNumber: z.string().min(10, {message: "Please enter a valid phone number."}),
   role: z.enum(["lawyer", "client"], { required_error: "You need to select a role." }),
-  // Lawyer specific fields
+  // Lawyer specific fields are now optional at the base level
   lawFirmName: z.string().optional(),
   lawFirmAddress: z.string().optional(),
   lskRegistrationNumber: z.string().optional(),
-}).superRefine((data, ctx) => {
-    if (data.role === 'lawyer') {
-        if (!data.lskRegistrationNumber || data.lskRegistrationNumber.trim() === '') {
-            ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: "LSK Registration Number is required for lawyers.",
-                path: ["lskRegistrationNumber"],
-            });
-        }
-        if (!data.lawFirmName || data.lawFirmName.trim() === '') {
-            ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: "Law Firm Name is required for lawyers.",
-                path: ["lawFirmName"],
-            });
-        }
-        if (!data.lawFirmAddress || data.lawFirmAddress.trim() === '') {
-            ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: "Law Firm Address is required for lawyers.",
-                path: ["lawFirmAddress"],
-            });
-        }
-    }
 });
 
 export function SignupForm() {
@@ -91,6 +66,25 @@ export function SignupForm() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setLoading(true);
+     // Manual validation for lawyer role
+    if (values.role === 'lawyer') {
+        if (!values.lskRegistrationNumber || values.lskRegistrationNumber.trim() === '') {
+            toast({ variant: 'destructive', title: 'Validation Error', description: 'LSK Registration Number is required for lawyers.' });
+            setLoading(false);
+            return;
+        }
+        if (!values.lawFirmName || values.lawFirmName.trim() === '') {
+            toast({ variant: 'destructive', title: 'Validation Error', description: 'Law Firm Name is required for lawyers.' });
+            setLoading(false);
+            return;
+        }
+         if (!values.lawFirmAddress || values.lawFirmAddress.trim() === '') {
+            toast({ variant: 'destructive', title: 'Validation Error', description: 'Law Firm Address is required for lawyers.' });
+            setLoading(false);
+            return;
+        }
+    }
+
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
       const firebaseUser = userCredential.user;
