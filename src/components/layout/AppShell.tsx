@@ -32,7 +32,7 @@ const navItems: NavItem[] = [
   { href: "/cases/create", label: "New Case", icon: PlusCircle, roles: ['lawyer'] },
   { href: "/cases", label: "All Cases", icon: Briefcase, roles: ['lawyer'] },
   { href: "/hearings", label: "Hearings", icon: CalendarDays, roles: ['lawyer', 'client'] },
-  { href: "/clients", label: "Clients", icon: Users, roles: ['lawyer'], disabled: true },
+  { href: "/clients", label: "Clients", icon: Users, roles: ['lawyer'], disabled: false },
   { href: "/dashboard/settings", label: "Settings", icon: Settings, roles: ['lawyer', 'client', 'admin'] },
   { href: "/admin/verifications", label: "Admin Verifications", icon: ShieldQuestion, roles: ['admin'], adminOnly: true },
 ];
