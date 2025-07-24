@@ -29,15 +29,11 @@ import { useAuth } from "@/hooks/use-auth";
 import { Textarea } from "../ui/textarea";
 import { Separator } from "../ui/separator";
 
-const phoneRegex = new RegExp(
-  /^([+]?[\s0-9]+)?(\d{3}|[(]?[0-9]+[)])?([-]?[\s]?[0-9])+$/
-);
-
 const formSchema = z.object({
   displayName: z.string().min(2, { message: "Display name must be at least 2 characters." }),
   email: z.string().email({ message: "Invalid email address." }),
   password: z.string().min(6, { message: "Password must be at least 6 characters." }),
-  phoneNumber: z.string().regex(phoneRegex, 'Invalid phone number').min(10, {message: "Phone number must be at least 10 digits."}),
+  phoneNumber: z.string().min(10, {message: "Please enter a valid phone number."}),
   role: z.enum(["lawyer", "client"], { required_error: "You need to select a role." }),
   // Lawyer specific fields
   lawFirmName: z.string().optional(),
