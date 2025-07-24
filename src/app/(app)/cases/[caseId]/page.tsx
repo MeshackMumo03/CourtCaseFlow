@@ -20,6 +20,7 @@ import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import { Textarea } from '@/components/ui/textarea';
 import { addCommentAction } from '@/actions/comments';
+import { cn } from '@/lib/utils';
 
 export default function CaseDetailPage() {
   const params = useParams();
@@ -385,6 +386,7 @@ export default function CaseDetailPage() {
                             <div key={comment.id} className={cn("flex items-start gap-3", comment.authorUid === user?.uid ? "justify-end" : "justify-start")}>
                                 {comment.authorUid !== user?.uid && (
                                      <Avatar className="h-8 w-8">
+                                        <AvatarImage src={comment.authorRole === 'lawyer' ? lawyerProfile?.photoURL : clientProfileForLawyerView?.photoURL} />
                                         <AvatarFallback>{getInitials(comment.authorName)}</AvatarFallback>
                                     </Avatar>
                                 )}
@@ -397,6 +399,7 @@ export default function CaseDetailPage() {
                                 </div>
                                 {comment.authorUid === user?.uid && (
                                      <Avatar className="h-8 w-8">
+                                        <AvatarImage src={userProfile?.photoURL} />
                                         <AvatarFallback>{getInitials(comment.authorName)}</AvatarFallback>
                                     </Avatar>
                                 )}
@@ -404,19 +407,17 @@ export default function CaseDetailPage() {
                         ))}
                          <div ref={commentsEndRef} />
                     </div>
-                    {isLawyerOwner && (
-                         <div className="flex gap-2">
-                            <Textarea
-                                placeholder="Type your message or update here..."
-                                value={newComment}
-                                onChange={(e) => setNewComment(e.target.value)}
-                                disabled={isPostingComment}
-                            />
-                            <Button onClick={handlePostComment} disabled={isPostingComment || !newComment.trim()}>
-                                {isPostingComment ? <Loader2 className="animate-spin" /> : <Send />}
-                            </Button>
-                        </div>
-                    )}
+                     <div className="flex gap-2 pt-2">
+                        <Textarea
+                            placeholder={userProfile?.role === 'lawyer' ? "Post an update for your client..." : "Type your message..."}
+                            value={newComment}
+                            onChange={(e) => setNewComment(e.target.value)}
+                            disabled={isPostingComment || userProfile?.role !== 'lawyer'}
+                        />
+                        <Button onClick={handlePostComment} disabled={isPostingComment || !newComment.trim() || userProfile?.role !== 'lawyer'}>
+                            {isPostingComment ? <Loader2 className="animate-spin" /> : <Send />}
+                        </Button>
+                    </div>
                 </CardContent>
             </Card>
         </div>
