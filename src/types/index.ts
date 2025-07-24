@@ -51,3 +51,12 @@ export interface CaseFile {
   // };
   // documents: CaseDocument[]; // Storing documents as a subcollection is better
 }
+
+export interface CaseComment {
+    id: string;
+    text: string;
+    authorUid: string;
+    authorName: string;
+    authorRole: 'lawyer' | 'client';
+    createdAt: Timestamp;
+}

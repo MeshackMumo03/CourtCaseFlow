@@ -1,16 +1,16 @@
 
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { doc, getDoc, Timestamp, query, collection, where, getDocs, onSnapshot, orderBy, Unsubscribe } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { CaseFile, UserProfile, CaseDocument } from '@/types';
+import type { CaseFile, UserProfile, CaseDocument, CaseComment } from '@/types';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertTriangle, ArrowLeft, Edit3, FilePlus, Loader2, Tags, User, Mail, Phone, Building, MapPin, ShieldCheck, Briefcase, CalendarCheck2, UserCircle2, FileText, Download, Eye } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Edit3, FilePlus, Loader2, Tags, User, Mail, Phone, Building, MapPin, ShieldCheck, Briefcase, CalendarCheck2, UserCircle2, FileText, Download, MessageSquare, Send } from 'lucide-react';
 import Link from 'next/link';
 import { DocumentUploadForm } from '@/components/documents/DocumentUploadForm';
 import { AiTaggingTool } from '@/components/documents/AiTaggingTool';
@@ -18,25 +18,33 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
+import { Textarea } from '@/components/ui/textarea';
+import { addCommentAction } from '@/actions/comments';
 
 export default function CaseDetailPage() {
   const params = useParams();
   const caseId = params.caseId as string;
   const router = useRouter();
-  const { userProfile, loading: authLoading } = useAuth();
+  const { user, userProfile, loading: authLoading } = useAuth();
   const { toast } = useToast();
   
   const [caseFile, setCaseFile] = useState<CaseFile | null>(null);
   const [lawyerProfile, setLawyerProfile] = useState<UserProfile | null>(null);
   const [clientProfileForLawyerView, setClientProfileForLawyerView] = useState<UserProfile | null>(null);
   const [documents, setDocuments] = useState<CaseDocument[]>([]);
+  const [comments, setComments] = useState<CaseComment[]>([]);
   
   const [loading, setLoading] = useState(true);
   const [loadingDocuments, setLoadingDocuments] = useState(true);
+  const [loadingComments, setLoadingComments] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadedDocumentForTagging, setUploadedDocumentForTagging] = useState<{ document: CaseDocument, dataUri: string } | null>(null);
+  
+  const [newComment, setNewComment] = useState('');
+  const [isPostingComment, setIsPostingComment] = useState(false);
+  const commentsEndRef = useRef<HTMLDivElement>(null);
 
 
   const getInitials = (name: string | null | undefined) => {
@@ -119,27 +127,46 @@ export default function CaseDetailPage() {
   }, [caseId, userProfile, authLoading, router, fetchCaseAndAssociatedProfiles]);
 
   useEffect(() => {
-    if (!caseId || !caseFile) return; // Only fetch documents if caseFile is loaded and user has access
+    let unsubDocs: Unsubscribe | undefined;
+    let unsubComments: Unsubscribe | undefined;
 
-    setLoadingDocuments(true);
-    const documentsRef = collection(db, 'cases', caseId, 'documents');
-    const q = query(documentsRef, orderBy('uploadedAt', 'desc'));
+    if (caseId && caseFile) { // Only fetch if caseFile is loaded and user has access
+        // Documents listener
+        setLoadingDocuments(true);
+        const documentsRef = collection(db, 'cases', caseId, 'documents');
+        const docsQuery = query(documentsRef, orderBy('uploadedAt', 'desc'));
+        unsubDocs = onSnapshot(docsQuery, (snapshot) => {
+            const fetchedDocs: CaseDocument[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CaseDocument));
+            setDocuments(fetchedDocs);
+            setLoadingDocuments(false);
+        }, (err) => {
+            console.error("Error fetching documents:", err);
+            toast({ variant: 'destructive', title: 'Error', description: 'Failed to load documents.'});
+            setLoadingDocuments(false);
+        });
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetchedDocs: CaseDocument[] = [];
-      snapshot.forEach((doc) => {
-        fetchedDocs.push({ id: doc.id, ...doc.data() } as CaseDocument);
-      });
-      setDocuments(fetchedDocs);
-      setLoadingDocuments(false);
-    }, (err) => {
-      console.error("Error fetching documents:", err);
-      toast({ variant: 'destructive', title: 'Error', description: 'Failed to load documents for this case.'});
-      setLoadingDocuments(false);
-    });
+        // Comments listener
+        setLoadingComments(true);
+        const commentsRef = collection(db, 'cases', caseId, 'comments');
+        const commentsQuery = query(commentsRef, orderBy('createdAt', 'asc'));
+        unsubComments = onSnapshot(commentsQuery, (snapshot) => {
+            const fetchedComments: CaseComment[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CaseComment));
+            setComments(fetchedComments);
+            setLoadingComments(false);
+            // Scroll to bottom after comments are loaded/updated
+            setTimeout(() => commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+        }, (err) => {
+            console.error("Error fetching comments:", err);
+            toast({ variant: 'destructive', title: 'Error', description: 'Failed to load comments.'});
+            setLoadingComments(false);
+        });
+    }
 
-    return () => unsubscribe();
-  }, [caseId, caseFile, toast]);
+    return () => {
+        if (unsubDocs) unsubDocs();
+        if (unsubComments) unsubComments();
+    };
+}, [caseId, caseFile, toast]);
 
 
   if (loading || authLoading) {
@@ -181,6 +208,28 @@ export default function CaseDetailPage() {
     setUploadedDocumentForTagging(null);
   };
 
+  const handlePostComment = async () => {
+      if (!user || !userProfile || !newComment.trim()) return;
+
+      setIsPostingComment(true);
+      const result = await addCommentAction(caseId, {
+          text: newComment,
+          authorUid: user.uid,
+          authorName: userProfile.displayName || 'Anonymous',
+          authorRole: userProfile.role,
+      });
+
+      if (result.success) {
+          setNewComment('');
+          // Optional: Send email notification here
+          // if (userProfile.role === 'lawyer' && clientProfileForLawyerView?.email) {
+          //   sendEmailAction({ to: clientProfileForLawyerView.email, ... })
+          // }
+      } else {
+          toast({ variant: 'destructive', title: 'Error', description: result.message });
+      }
+      setIsPostingComment(false);
+  }
 
   return (
     <div className="space-y-6 p-1 md:p-4 lg:p-6">
@@ -188,244 +237,303 @@ export default function CaseDetailPage() {
         <ArrowLeft className="mr-2 h-4 w-4" /> Back
       </Button>
 
-      <Card className="shadow-lg">
-        <CardHeader>
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-            <div>
-              <CardTitle className="text-3xl flex items-center gap-2">
-                <Briefcase className="h-7 w-7 text-primary"/> {caseFile.caseNumber}
-              </CardTitle>
-              <CardDescription>Client for this case: {caseFile.clientName} ({caseFile.clientEmail})</CardDescription>
-            </div>
-            {isLawyerOwner && (
-              <Button asChild variant="outline" className="print:hidden">
-                <Link href={`/cases/${caseId}/edit`}> 
-                  <Edit3 className="mr-2 h-4 w-4" /> Edit Case
-                </Link>
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
-          <div><strong className="font-medium text-muted-foreground">Court:</strong> {caseFile.court}</div>
-          <div>
-            <strong className="font-medium text-muted-foreground">Status:</strong>{' '}
-            <Badge variant={caseFile.status === 'active' ? 'default' : caseFile.status === 'closed' ? 'destructive' : caseFile.status === 'archived' ? 'outline' : 'secondary'} className="capitalize">
-              {caseFile.status}
-            </Badge>
-          </div>
-          {caseFile.hearingDate && (
-            <div className="flex items-center gap-1">
-              <CalendarCheck2 className="h-4 w-4 text-muted-foreground"/>
-              <strong className="font-medium text-muted-foreground">Hearing Date:</strong>{' '}
-              {caseFile.hearingDate instanceof Timestamp ? caseFile.hearingDate.toDate().toLocaleDateString() : new Date(caseFile.hearingDate as any).toLocaleDateString()}
-            </div>
-          )}
-          <div className="md:col-span-2">
-            <strong className="font-medium text-muted-foreground">Description:</strong>
-            <p className="mt-1 text-sm whitespace-pre-line">{caseFile.description || 'No description provided.'}</p>
-          </div>
-          <div className="text-xs text-muted-foreground"><strong className="font-medium">Created:</strong>{' '}
-            {caseFile.createdAt instanceof Timestamp ? caseFile.createdAt.toDate().toLocaleString() : new Date(caseFile.createdAt as any).toLocaleString()}
-          </div>
-           <div className="text-xs text-muted-foreground"><strong className="font-medium">Last Updated:</strong>{' '}
-            {caseFile.updatedAt instanceof Timestamp ? caseFile.updatedAt.toDate().toLocaleString() : new Date(caseFile.updatedAt as any).toLocaleString()}
-          </div>
-        </CardContent>
-      </Card>
-
-      {lawyerProfile && (
-        <Card className="shadow-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="h-6 w-6 text-primary" />
-              {userProfile?.role === 'client' ? "Your Lawyer's Information" : "Assigned Lawyer"}
-            </CardTitle>
-            <CardDescription>Contact and professional details for the lawyer on this case.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-             <div className="flex items-center gap-3">
-                <Avatar className="h-16 w-16">
-                    <AvatarImage src={lawyerProfile.photoURL || `https://placehold.co/100x100.png?text=${getInitials(lawyerProfile.displayName)}`} alt={lawyerProfile.displayName || "Lawyer"} data-ai-hint="lawyer avatar"/>
-                    <AvatarFallback>{getInitials(lawyerProfile.displayName)}</AvatarFallback>
-                </Avatar>
-                <div>
-                    <p className="text-xl font-semibold">{lawyerProfile.displayName}</p>
-                    {lawyerProfile.lskRegistrationNumber && (
-                        <p className="text-sm text-muted-foreground">LSK No: {lawyerProfile.lskRegistrationNumber}</p>
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div className="xl:col-span-2 space-y-6">
+            <Card className="shadow-lg">
+                <CardHeader>
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                    <div>
+                    <CardTitle className="text-3xl flex items-center gap-2">
+                        <Briefcase className="h-7 w-7 text-primary"/> {caseFile.caseNumber}
+                    </CardTitle>
+                    <CardDescription>Client for this case: {caseFile.clientName} ({caseFile.clientEmail})</CardDescription>
+                    </div>
+                    {isLawyerOwner && (
+                    <Button asChild variant="outline" className="print:hidden">
+                        <Link href={`/cases/${caseId}/edit`}> 
+                        <Edit3 className="mr-2 h-4 w-4" /> Edit Case
+                        </Link>
+                    </Button>
                     )}
                 </div>
-             </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                {lawyerProfile.email && (
-                    <div className="flex items-center gap-2">
-                        <Mail className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                        <a href={`mailto:${lawyerProfile.email}`} className="hover:underline break-all">{lawyerProfile.email}</a>
+                </CardHeader>
+                <CardContent className="grid gap-4 md:grid-cols-2">
+                <div><strong className="font-medium text-muted-foreground">Court:</strong> {caseFile.court}</div>
+                <div>
+                    <strong className="font-medium text-muted-foreground">Status:</strong>{' '}
+                    <Badge variant={caseFile.status === 'active' ? 'default' : caseFile.status === 'closed' ? 'destructive' : caseFile.status === 'archived' ? 'outline' : 'secondary'} className="capitalize">
+                    {caseFile.status}
+                    </Badge>
+                </div>
+                {caseFile.hearingDate && (
+                    <div className="flex items-center gap-1">
+                    <CalendarCheck2 className="h-4 w-4 text-muted-foreground"/>
+                    <strong className="font-medium text-muted-foreground">Hearing:</strong>{' '}
+                    {caseFile.hearingDate instanceof Timestamp ? caseFile.hearingDate.toDate().toLocaleString() : new Date(caseFile.hearingDate as any).toLocaleString()}
                     </div>
                 )}
-                {lawyerProfile.phoneNumber && (
-                    <div className="flex items-center gap-2">
-                        <Phone className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                        <span>{lawyerProfile.phoneNumber}</span>
+                <div className="md:col-span-2">
+                    <strong className="font-medium text-muted-foreground">Description:</strong>
+                    <p className="mt-1 text-sm whitespace-pre-line">{caseFile.description || 'No description provided.'}</p>
+                </div>
+                <div className="text-xs text-muted-foreground"><strong className="font-medium">Created:</strong>{' '}
+                    {caseFile.createdAt instanceof Timestamp ? caseFile.createdAt.toDate().toLocaleString() : new Date(caseFile.createdAt as any).toLocaleString()}
+                </div>
+                <div className="text-xs text-muted-foreground"><strong className="font-medium">Last Updated:</strong>{' '}
+                    {caseFile.updatedAt instanceof Timestamp ? caseFile.updatedAt.toDate().toLocaleString() : new Date(caseFile.updatedAt as any).toLocaleString()}
+                </div>
+                </CardContent>
+            </Card>
+            
+            <Card className="shadow-lg print:hidden">
+                <CardHeader className="flex flex-row items-center justify-between">
+                    <CardTitle>Case Documents</CardTitle>
+                    {isLawyerOwner && (
+                        <Button onClick={() => setShowUploadModal(true)}>
+                            <FilePlus className="mr-2 h-4 w-4" /> Upload Document
+                        </Button>
+                    )}
+                </CardHeader>
+                <CardContent>
+                {loadingDocuments && (
+                    <div className="flex items-center justify-center p-6">
+                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                        <span className="ml-2">Loading documents...</span>
                     </div>
                 )}
-                {lawyerProfile.lawFirmName && (
-                    <div className="flex items-center gap-2">
-                        <Building className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                        <span>{lawyerProfile.lawFirmName}</span>
+                {!loadingDocuments && documents.length === 0 && !uploadedDocumentForTagging && (
+                    <div className="text-center py-10 border border-dashed rounded-md">
+                    <FileText className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-lg font-semibold text-muted-foreground">No documents uploaded yet.</p>
+                    {isLawyerOwner && <p className="text-sm text-muted-foreground">Click "Upload Document" to add files to this case.</p>}
                     </div>
                 )}
-                {lawyerProfile.lawFirmAddress && (
-                    <div className="flex items-start gap-2 md:col-span-2">
-                        <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                        <span className="whitespace-pre-line">{lawyerProfile.lawFirmAddress}</span>
+                {!loadingDocuments && documents.length > 0 && (
+                    <Table>
+                    <TableHeader>
+                        <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Uploaded</TableHead>
+                        <TableHead>Tags</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {documents.map((doc) => (
+                        <TableRow key={doc.id}>
+                            <TableCell className="font-medium break-all max-w-xs">
+                            <a href={doc.downloadURL} target="_blank" rel="noopener noreferrer" className="hover:underline text-primary">
+                                {doc.name}
+                            </a>
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground break-all max-w-xs">{doc.description || 'N/A'}</TableCell>
+                            <TableCell className="text-sm">
+                                {doc.uploadedAt instanceof Timestamp ? doc.uploadedAt.toDate().toLocaleDateString() : new Date(doc.uploadedAt as any).toLocaleDateString()}
+                            </TableCell>
+                            <TableCell>
+                            {doc.tags && doc.tags.length > 0 ? (
+                                <div className="flex flex-wrap gap-1">
+                                {doc.tags.map((tag, i) => <Badge key={i} variant="secondary">{tag}</Badge>)}
+                                </div>
+                            ) : (
+                                <span className="text-xs text-muted-foreground">No tags</span>
+                            )}
+                            </TableCell>
+                            <TableCell className="text-right">
+                            <Button variant="outline" size="sm" asChild>
+                                <a href={doc.downloadURL} target="_blank" rel="noopener noreferrer">
+                                <Download className="mr-2 h-4 w-4" /> Download
+                                </a>
+                            </Button>
+                            </TableCell>
+                        </TableRow>
+                        ))}
+                    </TableBody>
+                    </Table>
+                )}
+                {uploadedDocumentForTagging && isLawyerOwner && (
+                    <div className="mt-4">
+                        <AiTaggingTool
+                        documentName={uploadedDocumentForTagging.document.name}
+                        documentDataUri={uploadedDocumentForTagging.dataUri}
+                        caseId={caseId}
+                        documentId={uploadedDocumentForTagging.document.id}
+                        onTagsApplied={handleTagsApplied}
+                        />
                     </div>
                 )}
-                {lawyerProfile.role === 'lawyer' && (lawyerProfile.lskVerificationStatus || lawyerProfile.lawFirmVerificationStatus) && (
-                    <div className="md:col-span-2 pt-2 mt-2 border-t">
-                        <h4 className="font-medium text-sm mb-1">Verification Status:</h4>
-                        <div className="flex flex-wrap gap-2">
+                </CardContent>
+            </Card>
+
+            <Card className="shadow-lg">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <MessageSquare className="h-6 w-6 text-primary" />
+                        Case Log & Communication
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="h-96 overflow-y-auto space-y-4 p-4 border rounded-md bg-muted/20">
+                        {loadingComments && <div className="flex justify-center items-center h-full"><Loader2 className="animate-spin" /></div>}
+                        {!loadingComments && comments.length === 0 && (
+                            <div className="flex justify-center items-center h-full">
+                                <p className="text-muted-foreground">No comments yet. Start the conversation.</p>
+                            </div>
+                        )}
+                        {comments.map(comment => (
+                            <div key={comment.id} className={cn("flex items-start gap-3", comment.authorUid === user?.uid ? "justify-end" : "justify-start")}>
+                                {comment.authorUid !== user?.uid && (
+                                     <Avatar className="h-8 w-8">
+                                        <AvatarFallback>{getInitials(comment.authorName)}</AvatarFallback>
+                                    </Avatar>
+                                )}
+                                <div className={cn("max-w-md rounded-lg px-4 py-2", comment.authorUid === user?.uid ? "bg-primary text-primary-foreground" : "bg-card border")}>
+                                    <p className="text-xs font-semibold">{comment.authorName}</p>
+                                    <p className="text-sm whitespace-pre-wrap">{comment.text}</p>
+                                    <p className="text-xs opacity-70 mt-1 text-right">
+                                        {comment.createdAt instanceof Timestamp ? comment.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '...'}
+                                    </p>
+                                </div>
+                                {comment.authorUid === user?.uid && (
+                                     <Avatar className="h-8 w-8">
+                                        <AvatarFallback>{getInitials(comment.authorName)}</AvatarFallback>
+                                    </Avatar>
+                                )}
+                            </div>
+                        ))}
+                         <div ref={commentsEndRef} />
+                    </div>
+                    {isLawyerOwner && (
+                         <div className="flex gap-2">
+                            <Textarea
+                                placeholder="Type your message or update here..."
+                                value={newComment}
+                                onChange={(e) => setNewComment(e.target.value)}
+                                disabled={isPostingComment}
+                            />
+                            <Button onClick={handlePostComment} disabled={isPostingComment || !newComment.trim()}>
+                                {isPostingComment ? <Loader2 className="animate-spin" /> : <Send />}
+                            </Button>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+        </div>
+        
+        <div className="xl:col-span-1 space-y-6">
+            {lawyerProfile && (
+                <Card className="shadow-lg">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                    <User className="h-6 w-6 text-primary" />
+                    {userProfile?.role === 'client' ? "Your Lawyer's Information" : "Assigned Lawyer"}
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                    <div className="flex items-center gap-3">
+                        <Avatar className="h-16 w-16">
+                            <AvatarImage src={lawyerProfile.photoURL || `https://placehold.co/100x100.png?text=${getInitials(lawyerProfile.displayName)}`} alt={lawyerProfile.displayName || "Lawyer"} data-ai-hint="lawyer avatar"/>
+                            <AvatarFallback>{getInitials(lawyerProfile.displayName)}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                            <p className="text-xl font-semibold">{lawyerProfile.displayName}</p>
                             {lawyerProfile.lskRegistrationNumber && (
-                                <Badge variant={lawyerProfile.lskVerificationStatus === 'verified' ? 'default' : lawyerProfile.lskVerificationStatus === 'pending_review' ? 'secondary' : lawyerProfile.lskVerificationStatus === 'rejected' ? 'destructive' : 'outline'} className="capitalize">
-                                    <ShieldCheck className="mr-1.5 h-3.5 w-3.5" /> LSK: {lawyerProfile.lskVerificationStatus?.replace('_', ' ') || 'Unverified'}
-                                </Badge>
-                            )}
-                            {(lawyerProfile.lawFirmName || lawyerProfile.lawFirmAddress) && (
-                                 <Badge variant={lawyerProfile.lawFirmVerificationStatus === 'verified' ? 'default' : lawyerProfile.lawFirmVerificationStatus === 'pending_review' ? 'secondary' : lawyerProfile.lawFirmVerificationStatus === 'rejected' ? 'destructive' : 'outline'} className="capitalize">
-                                    <ShieldCheck className="mr-1.5 h-3.5 w-3.5" /> Firm: {lawyerProfile.lawFirmVerificationStatus?.replace('_', ' ') || 'Unverified'}
-                                </Badge>
+                                <p className="text-sm text-muted-foreground">LSK No: {lawyerProfile.lskRegistrationNumber}</p>
                             )}
                         </div>
                     </div>
-                )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {isLawyerOwner && clientProfileForLawyerView && (
-         <Card className="shadow-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-                <UserCircle2 className="h-6 w-6 text-primary" /> Registered Client Details
-            </CardTitle>
-            <CardDescription>Information from the client's CourtCaseFlow profile.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-             <div className="flex items-center gap-3">
-                <Avatar className="h-16 w-16">
-                    <AvatarImage src={clientProfileForLawyerView.photoURL || `https://placehold.co/100x100.png?text=${getInitials(clientProfileForLawyerView.displayName)}`} alt={clientProfileForLawyerView.displayName || "Client"} data-ai-hint="client avatar"/>
-                    <AvatarFallback>{getInitials(clientProfileForLawyerView.displayName)}</AvatarFallback>
-                </Avatar>
-                <div>
-                    <p className="text-xl font-semibold">{clientProfileForLawyerView.displayName}</p>
-                    {clientProfileForLawyerView.createdAt instanceof Timestamp && (
-                         <p className="text-sm text-muted-foreground">Joined: {clientProfileForLawyerView.createdAt.toDate().toLocaleDateString()}</p>
-                    )}
-                     {clientProfileForLawyerView.createdAt && !(clientProfileForLawyerView.createdAt instanceof Timestamp) && (
-                         <p className="text-sm text-muted-foreground">Joined: {new Date(clientProfileForLawyerView.createdAt as any).toLocaleDateString()}</p>
-                    )}
-                </div>
-             </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                {clientProfileForLawyerView.email && (
-                    <div className="flex items-center gap-2">
-                        <Mail className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                        <a href={`mailto:${clientProfileForLawyerView.email}`} className="hover:underline break-all">{clientProfileForLawyerView.email}</a>
+                    <div className="grid grid-cols-1 gap-x-4 gap-y-2 text-sm">
+                        {lawyerProfile.email && (
+                            <div className="flex items-center gap-2">
+                                <Mail className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                <a href={`mailto:${lawyerProfile.email}`} className="hover:underline break-all">{lawyerProfile.email}</a>
+                            </div>
+                        )}
+                        {lawyerProfile.phoneNumber && (
+                            <div className="flex items-center gap-2">
+                                <Phone className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                <span>{lawyerProfile.phoneNumber}</span>
+                            </div>
+                        )}
+                        {lawyerProfile.lawFirmName && (
+                            <div className="flex items-center gap-2">
+                                <Building className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                <span>{lawyerProfile.lawFirmName}</span>
+                            </div>
+                        )}
+                        {lawyerProfile.lawFirmAddress && (
+                            <div className="flex items-start gap-2">
+                                <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                                <span className="whitespace-pre-line">{lawyerProfile.lawFirmAddress}</span>
+                            </div>
+                        )}
+                        {lawyerProfile.role === 'lawyer' && (lawyerProfile.lskVerificationStatus || lawyerProfile.lawFirmVerificationStatus) && (
+                            <div className="pt-2 mt-2 border-t">
+                                <h4 className="font-medium text-sm mb-1">Verification Status:</h4>
+                                <div className="flex flex-wrap gap-2">
+                                    {lawyerProfile.lskRegistrationNumber && (
+                                        <Badge variant={lawyerProfile.lskVerificationStatus === 'verified' ? 'default' : lawyerProfile.lskVerificationStatus === 'pending_review' ? 'secondary' : lawyerProfile.lskVerificationStatus === 'rejected' ? 'destructive' : 'outline'} className="capitalize">
+                                            <ShieldCheck className="mr-1.5 h-3.5 w-3.5" /> LSK: {lawyerProfile.lskVerificationStatus?.replace('_', ' ') || 'Unverified'}
+                                        </Badge>
+                                    )}
+                                    {(lawyerProfile.lawFirmName || lawyerProfile.lawFirmAddress) && (
+                                        <Badge variant={lawyerProfile.lawFirmVerificationStatus === 'verified' ? 'default' : lawyerProfile.lawFirmVerificationStatus === 'pending_review' ? 'secondary' : lawyerProfile.lawFirmVerificationStatus === 'rejected' ? 'destructive' : 'outline'} className="capitalize">
+                                            <ShieldCheck className="mr-1.5 h-3.5 w-3.5" /> Firm: {lawyerProfile.lawFirmVerificationStatus?.replace('_', ' ') || 'Unverified'}
+                                        </Badge>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </div>
-                )}
-                {clientProfileForLawyerView.phoneNumber && (
-                    <div className="flex items-center gap-2">
-                        <Phone className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                        <span>{clientProfileForLawyerView.phoneNumber}</span>
-                    </div>
-                )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <Card className="shadow-lg print:hidden">
-        <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Case Documents</CardTitle>
-            {isLawyerOwner && (
-                 <Button onClick={() => setShowUploadModal(true)}>
-                    <FilePlus className="mr-2 h-4 w-4" /> Upload Document
-                </Button>
+                </CardContent>
+                </Card>
             )}
-        </CardHeader>
-        <CardContent>
-          {loadingDocuments && (
-            <div className="flex items-center justify-center p-6">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                <span className="ml-2">Loading documents...</span>
-            </div>
-          )}
-          {!loadingDocuments && documents.length === 0 && !uploadedDocumentForTagging && (
-            <div className="text-center py-10 border border-dashed rounded-md">
-              <FileText className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-              <p className="text-lg font-semibold text-muted-foreground">No documents uploaded yet.</p>
-              {isLawyerOwner && <p className="text-sm text-muted-foreground">Click "Upload Document" to add files to this case.</p>}
-            </div>
-          )}
-          {!loadingDocuments && documents.length > 0 && (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Uploaded</TableHead>
-                  <TableHead>Tags</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {documents.map((doc) => (
-                  <TableRow key={doc.id}>
-                    <TableCell className="font-medium break-all max-w-xs">
-                       <a href={doc.downloadURL} target="_blank" rel="noopener noreferrer" className="hover:underline text-primary">
-                        {doc.name}
-                      </a>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground break-all max-w-xs">{doc.description || 'N/A'}</TableCell>
-                    <TableCell className="text-sm">
-                        {doc.uploadedAt instanceof Timestamp ? doc.uploadedAt.toDate().toLocaleDateString() : new Date(doc.uploadedAt as any).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      {doc.tags && doc.tags.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {doc.tags.map((tag, i) => <Badge key={i} variant="secondary">{tag}</Badge>)}
+
+            {isLawyerOwner && clientProfileForLawyerView && (
+                <Card className="shadow-lg">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <UserCircle2 className="h-6 w-6 text-primary" /> Registered Client Details
+                    </CardTitle>
+                    <CardDescription>Information from the client's profile.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                    <div className="flex items-center gap-3">
+                        <Avatar className="h-16 w-16">
+                            <AvatarImage src={clientProfileForLawyerView.photoURL || `https://placehold.co/100x100.png?text=${getInitials(clientProfileForLawyerView.displayName)}`} alt={clientProfileForLawyerView.displayName || "Client"} data-ai-hint="client avatar"/>
+                            <AvatarFallback>{getInitials(clientProfileForLawyerView.displayName)}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                            <p className="text-xl font-semibold">{clientProfileForLawyerView.displayName}</p>
+                            {clientProfileForLawyerView.createdAt instanceof Timestamp && (
+                                <p className="text-sm text-muted-foreground">Joined: {clientProfileForLawyerView.createdAt.toDate().toLocaleDateString()}</p>
+                            )}
+                            {clientProfileForLawyerView.createdAt && !(clientProfileForLawyerView.createdAt instanceof Timestamp) && (
+                                <p className="text-sm text-muted-foreground">Joined: {new Date(clientProfileForLawyerView.createdAt as any).toLocaleDateString()}</p>
+                            )}
                         </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">No tags</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="outline" size="sm" asChild>
-                        <a href={doc.downloadURL} target="_blank" rel="noopener noreferrer">
-                          <Download className="mr-2 h-4 w-4" /> Download
-                        </a>
-                      </Button>
-                       {/* Future: Add Edit Tags / Delete buttons here */}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-          {uploadedDocumentForTagging && isLawyerOwner && (
-            <div className="mt-4">
-                <AiTaggingTool
-                  documentName={uploadedDocumentForTagging.document.name}
-                  documentDataUri={uploadedDocumentForTagging.dataUri}
-                  caseId={caseId}
-                  documentId={uploadedDocumentForTagging.document.id}
-                  onTagsApplied={handleTagsApplied}
-                />
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                    </div>
+                    <div className="grid grid-cols-1 gap-x-4 gap-y-2 text-sm">
+                        {clientProfileForLawyerView.email && (
+                            <div className="flex items-center gap-2">
+                                <Mail className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                <a href={`mailto:${clientProfileForLawyerView.email}`} className="hover:underline break-all">{clientProfileForLawyerView.email}</a>
+                            </div>
+                        )}
+                        {clientProfileForLawyerView.phoneNumber && (
+                            <div className="flex items-center gap-2">
+                                <Phone className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                <span>{clientProfileForLawyerView.phoneNumber}</span>
+                            </div>
+                        )}
+                    </div>
+                </CardContent>
+                </Card>
+            )}
+        </div>
+      </div>
+
 
       {isLawyerOwner && showUploadModal && (
          <DocumentUploadForm 
