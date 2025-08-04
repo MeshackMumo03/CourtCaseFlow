@@ -9,7 +9,7 @@ const firebaseConfig = {
   authDomain: "caselink-skc52.firebaseapp.com",
   databaseURL: "https://caselink-skc52-default-rtdb.firebaseio.com",
   projectId: "caselink-skc52",
-  storageBucket: "caselink-skc52.appspot.com",
+  storageBucket: "caselink-skc52.firebasestorage.app",
   messagingSenderId: "798746625437",
   appId: "1:798746625437:web:f2b0f0281d9bd601b61b74"
 };
