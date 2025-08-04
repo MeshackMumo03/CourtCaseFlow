@@ -65,7 +65,7 @@ export async function createUserProfileInFirestore(
 
     const createdProfileForContext: UserProfile = {
       ...cleanProfileData,
-      createdAt: Timestamp.now() // Use client-side timestamp for immediate context update
+      createdAt: Timestamp.now().toJSON() // Use client-side timestamp for immediate context update
     } as UserProfile;
 
 
@@ -172,7 +172,11 @@ export async function handleGoogleSignInAction(firebaseUser: FirebaseUser): Prom
     if (userDocSnap.exists()) {
       // User profile already exists, just return success
       const existingProfile = userDocSnap.data() as UserProfile;
-      return { success: true, message: 'User logged in successfully.', userId: uid, createdProfile: existingProfile };
+       const createdProfileForContext: UserProfile = {
+        ...existingProfile,
+        createdAt: (existingProfile.createdAt as Timestamp).toJSON(),
+      } as UserProfile;
+      return { success: true, message: 'User logged in successfully.', userId: uid, createdProfile: createdProfileForContext };
     } else {
       // New user, create a profile for them. Defaulting to 'client'.
       // A real-world app might have a second step to ask for role.
@@ -191,7 +195,7 @@ export async function handleGoogleSignInAction(firebaseUser: FirebaseUser): Prom
       
       const createdProfileForContext: UserProfile = {
         ...newUserProfile,
-        createdAt: Timestamp.now()
+        createdAt: Timestamp.now().toJSON()
       } as UserProfile;
 
       return { success: true, message: 'New user profile created successfully.', userId: uid, createdProfile: createdProfileForContext };
