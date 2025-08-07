@@ -27,13 +27,22 @@ export default function DashboardPage() {
     setDataLoading(true);
     try {
       let q;
+      // Fetch cases without server-side ordering to prevent index errors
       if (userProfile.role === 'lawyer') {
-        q = query(collection(db, 'cases'), where('lawyerUid', '==', userProfile.uid), orderBy('createdAt', 'desc'));
+        q = query(collection(db, 'cases'), where('lawyerUid', '==', userProfile.uid));
       } else { // client
-        q = query(collection(db, 'cases'), where('clientEmail', '==', userProfile.email), orderBy('createdAt', 'desc'));
+        q = query(collection(db, 'cases'), where('clientEmail', '==', userProfile.email));
       }
       const querySnapshot = await getDocs(q);
-      const cases: CaseFile[] = querySnapshot.docs.map(doc => ({ id: doc.id, ...toSerializable(doc.data()) } as CaseFile));
+      
+      // Manually sort the cases by creation date (newest first)
+      const cases: CaseFile[] = querySnapshot.docs.map(doc => toSerializable({ id: doc.id, ...doc.data() }) as CaseFile)
+        .sort((a, b) => {
+            const timeA = new Date(a.createdAt as any).getTime();
+            const timeB = new Date(b.createdAt as any).getTime();
+            return timeB - timeA;
+        });
+
       
       const activeCases = cases.filter(c => c.status === 'active').length;
       const upcomingHearings = cases.filter(c => c.hearingDate && new Date(c.hearingDate as any) > new Date()).length;
