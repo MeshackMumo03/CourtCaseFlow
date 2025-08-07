@@ -20,8 +20,7 @@ import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import { Textarea } from '@/components/ui/textarea';
 import { addCommentAction } from '@/actions/comments';
-import { cn } from '@/lib/utils';
-import { toSerializable } from '@/lib/utils';
+import { cn, toSerializable } from '@/lib/utils';
 
 export default function CaseDetailPage() {
   const params = useParams();

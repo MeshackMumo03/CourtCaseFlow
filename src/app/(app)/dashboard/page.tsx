@@ -56,7 +56,7 @@ export default function DashboardPage() {
     setDataLoading(true);
     try {
       const usersSnapshot = await getDocs(collection(db, 'users'));
-      const allUsers = usersSnapshot.docs.map(doc => doc.data() as UserProfile);
+      const allUsers = usersSnapshot.docs.map(doc => toSerializable(doc.data()) as UserProfile);
       
       const totalUsers = allUsers.length;
       const totalLawyers = allUsers.filter(u => u.role === 'lawyer').length;
