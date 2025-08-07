@@ -36,6 +36,7 @@ import type { CaseFile, UserProfile } from '@/types';
 import { useAuth } from '@/hooks/use-auth';
 import { Timestamp } from 'firebase/firestore';
 import { Combobox } from '@/components/ui/combobox';
+import { courtList } from '@/lib/courts';
 
 
 const caseFormSchema = z.object({
@@ -67,6 +68,11 @@ export function CaseForm({ initialData, caseId, clients = [] }: CaseFormProps) {
   const clientOptions = clients.map(client => ({
     value: client.email!,
     label: `${client.displayName} (${client.email})`
+  }));
+
+  const courtOptions = courtList.map(court => ({
+    value: court,
+    label: court,
   }));
   
   const getInitialTime = () => {
@@ -199,11 +205,16 @@ export function CaseForm({ initialData, caseId, clients = [] }: CaseFormProps) {
                 control={form.control}
                 name="court"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="flex flex-col">
                     <FormLabel>Court</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g., High Court of Justice" {...field} />
-                    </FormControl>
+                    <Combobox
+                        options={courtOptions}
+                        value={field.value}
+                        onChange={(value) => form.setValue('court', value, { shouldValidate: true })}
+                        placeholder="Select a court..."
+                        searchPlaceholder="Search for a court..."
+                        emptyPlaceholder="No court found."
+                    />
                     <FormMessage />
                   </FormItem>
                 )}
@@ -219,7 +230,7 @@ export function CaseForm({ initialData, caseId, clients = [] }: CaseFormProps) {
                     <FormItem>
                       <FormLabel>Client Name</FormLabel>
                       <FormControl>
-                        <Input placeholder="John Doe" {...field} />
+                        <Input placeholder="John Doe" {...field} readOnly disabled/>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -232,7 +243,7 @@ export function CaseForm({ initialData, caseId, clients = [] }: CaseFormProps) {
                     <FormItem>
                       <FormLabel>Client Email</FormLabel>
                       <FormControl>
-                        <Input type="email" placeholder="client@example.com" {...field} />
+                        <Input type="email" placeholder="client@example.com" {...field} readOnly disabled/>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
