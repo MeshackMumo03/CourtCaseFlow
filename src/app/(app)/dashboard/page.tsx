@@ -11,6 +11,7 @@ import { collection, query, where, getDocs, Timestamp, orderBy } from 'firebase/
 import { db } from '@/lib/firebase';
 import type { CaseFile, UserProfile } from '@/types';
 import Image from "next/image";
+import { toSerializable } from "@/lib/utils";
 
 const ADMIN_EMAIL = 'admin@caselink.com';
 
@@ -27,28 +28,16 @@ export default function DashboardPage() {
     try {
       let q;
       if (userProfile.role === 'lawyer') {
-        q = query(collection(db, 'cases'), where('lawyerUid', '==', userProfile.uid));
+        q = query(collection(db, 'cases'), where('lawyerUid', '==', userProfile.uid), orderBy('createdAt', 'desc'));
       } else { // client
-        q = query(collection(db, 'cases'), where('clientEmail', '==', userProfile.email));
+        q = query(collection(db, 'cases'), where('clientEmail', '==', userProfile.email), orderBy('createdAt', 'desc'));
       }
       const querySnapshot = await getDocs(q);
-      const cases: CaseFile[] = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CaseFile));
+      const cases: CaseFile[] = querySnapshot.docs.map(doc => ({ id: doc.id, ...toSerializable(doc.data()) } as CaseFile));
       
-      // Sort cases by creation date descending (newest first)
-      cases.sort((a, b) => {
-        const timeA = a.createdAt instanceof Timestamp ? a.createdAt.toMillis() : 0;
-        const timeB = b.createdAt instanceof Timestamp ? b.createdAt.toMillis() : 0;
-        return timeB - timeA;
-      });
-
       const activeCases = cases.filter(c => c.status === 'active').length;
-      const upcomingHearings = cases.filter(c => c.hearingDate && c.hearingDate.toMillis() > Date.now()).length;
+      const upcomingHearings = cases.filter(c => c.hearingDate && new Date(c.hearingDate as any) > new Date()).length;
       
-      // This is the optimization: We calculate totalDocuments from the cases query,
-      // avoiding N+1 queries for documents. This will be an approximation if documents can be deleted.
-      // For a precise count, a separate aggregation would be needed, but this is a huge performance win.
-      // We will assume that cases have a `documentCount` field, which we would populate on document upload/delete.
-      // Since we don't have that field, we'll simulate it for now.
       const totalDocuments = cases.length * 2; // Simulated average
 
       setDashboardData({
@@ -189,7 +178,7 @@ export default function DashboardPage() {
 
   // LAWYER & CLIENT DASHBOARD VIEW
   const { cases, stats } = dashboardData;
-  const upcomingHearings = cases.filter((c: CaseFile) => c.hearingDate && c.hearingDate.toMillis() > Date.now());
+  const upcomingHearings = cases.filter((c: CaseFile) => c.hearingDate && new Date(c.hearingDate as any) > new Date());
 
   return (
     <div className="flex-1 space-y-6">
@@ -267,7 +256,7 @@ export default function DashboardPage() {
                   <div>
                     <p className="font-semibold">{caseItem.caseNumber} - {caseItem.clientName}</p>
                     <p className="text-sm text-muted-foreground">Status: <span className="capitalize">{caseItem.status}</span></p>
-                    {caseItem.hearingDate && <p className="text-sm text-muted-foreground">Next Hearing: {caseItem.hearingDate.toDate().toLocaleDateString()}</p>}
+                    {caseItem.hearingDate && <p className="text-sm text-muted-foreground">Next Hearing: {new Date(caseItem.hearingDate as any).toLocaleDateString()}</p>}
                   </div>
                   <Button variant="outline" size="sm" asChild>
                     <Link href={`/cases/${caseItem.id}`}>View</Link>

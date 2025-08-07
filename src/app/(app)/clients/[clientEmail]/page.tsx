@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Loader2, AlertTriangle, UserCircle2, Mail, Phone, ArrowLeft, Briefcase, Eye } from 'lucide-react';
 import Link from 'next/link';
+import { toSerializable } from '@/lib/utils';
 
 export default function ClientDetailPage() {
   const { userProfile, loading: authLoading } = useAuth();
@@ -40,7 +41,7 @@ export default function ClientDetailPage() {
         throw new Error('Client profile not found.');
       }
       const clientData = clientSnapshot.docs[0].data() as UserProfile;
-      setClient({ ...clientData, uid: clientSnapshot.docs[0].id });
+      setClient({ ...toSerializable(clientData), uid: clientSnapshot.docs[0].id } as UserProfile);
 
       // 2. Fetch cases for this client managed by the current lawyer
       const casesQuery = query(
@@ -49,8 +50,8 @@ export default function ClientDetailPage() {
         where('lawyerUid', '==', userProfile.uid)
       );
       const casesSnapshot = await getDocs(casesQuery);
-      const fetchedCases = casesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CaseFile))
-        .sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)); // Newest first
+      const fetchedCases = casesSnapshot.docs.map(doc => ({ id: doc.id, ...toSerializable(doc.data()) } as CaseFile))
+        .sort((a, b) => new Date(b.createdAt as any).getTime() - new Date(a.createdAt as any).getTime()); // Newest first
       
       setCases(fetchedCases);
 
@@ -133,8 +134,8 @@ export default function ClientDetailPage() {
                     </Avatar>
                     <div>
                         <p className="text-2xl font-semibold">{client.displayName}</p>
-                        {client.createdAt instanceof Timestamp && (
-                            <p className="text-sm text-muted-foreground">Joined: {client.createdAt.toDate().toLocaleDateString()}</p>
+                        {client.createdAt && (
+                            <p className="text-sm text-muted-foreground">Joined: {new Date(client.createdAt as any).toLocaleDateString()}</p>
                         )}
                     </div>
               </div>

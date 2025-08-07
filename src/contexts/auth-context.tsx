@@ -8,6 +8,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import React, { createContext, useEffect, useState } from 'react';
 import { auth, db, ensureFirebaseInitialized } from '@/lib/firebase';
 import type { UserProfile } from '@/types';
+import { toSerializable } from '@/lib/utils';
 
 interface AuthContextType {
   user: FirebaseUser | null;
@@ -33,23 +34,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         const userDocRef = doc(db, 'users', firebaseUser.uid);
         const userDocSnap = await getDoc(userDocRef);
         if (userDocSnap.exists()) {
-          const profileData = userDocSnap.data() as Omit<UserProfile, 'createdAt'> & { createdAt: Timestamp | { seconds: number, nanoseconds: number } };
-          
-          let createdAtJson: any; // Can be string or Timestamp for UserProfile type
-          if (profileData.createdAt instanceof Timestamp) {
-            createdAtJson = profileData.createdAt.toJSON();
-          } else if (profileData.createdAt && typeof profileData.createdAt === 'object' && 'seconds' in profileData.createdAt) {
-            // Handle plain object format for Timestamps that sometimes comes from server actions or serialization
-             createdAtJson = new Timestamp(profileData.createdAt.seconds, profileData.createdAt.nanoseconds).toJSON();
-          } else {
-             // Fallback for newly created users where serverTimestamp might not be resolved yet
-            createdAtJson = Timestamp.now().toJSON();
-          }
-
-          const fetchedProfile: UserProfile = {
-            ...(userDocSnap.data() as UserProfile),
-            createdAt: createdAtJson,
-          };
+          const fetchedProfile = toSerializable(userDocSnap.data()) as UserProfile;
           setUserProfile(fetchedProfile);
         } else {
           // This case might happen if user exists in Auth but not in Firestore (e.g. incomplete signup)

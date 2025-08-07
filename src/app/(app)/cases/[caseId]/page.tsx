@@ -21,6 +21,7 @@ import Image from 'next/image';
 import { Textarea } from '@/components/ui/textarea';
 import { addCommentAction } from '@/actions/comments';
 import { cn } from '@/lib/utils';
+import { toSerializable } from '@/lib/utils';
 
 export default function CaseDetailPage() {
   const params = useParams();
@@ -76,14 +77,14 @@ export default function CaseDetailPage() {
         }
 
         if (canViewCase) {
-          const fetchedCaseFile = { id: caseDocSnap.id, ...data };
+          const fetchedCaseFile = { id: caseDocSnap.id, ...toSerializable(data) } as CaseFile;
           setCaseFile(fetchedCaseFile);
 
           if (fetchedCaseFile.lawyerUid) {
             const lawyerDocRef = doc(db, 'users', fetchedCaseFile.lawyerUid);
             const lawyerDocSnap = await getDoc(lawyerDocRef);
             if (lawyerDocSnap.exists()) {
-              setLawyerProfile(lawyerDocSnap.data() as UserProfile);
+              setLawyerProfile(toSerializable(lawyerDocSnap.data()) as UserProfile);
             } else {
               console.warn(`Lawyer profile not found for UID: ${fetchedCaseFile.lawyerUid}`);
             }
@@ -94,7 +95,7 @@ export default function CaseDetailPage() {
             const clientSnapshot = await getDocs(clientQuery);
             if (!clientSnapshot.empty) {
               const clientData = clientSnapshot.docs[0].data() as UserProfile;
-              setClientProfileForLawyerView({ ...clientData, uid: clientSnapshot.docs[0].id });
+              setClientProfileForLawyerView({ ...toSerializable(clientData), uid: clientSnapshot.docs[0].id } as UserProfile);
             }
           }
         } else {
@@ -137,7 +138,7 @@ export default function CaseDetailPage() {
         const documentsRef = collection(db, 'cases', caseId, 'documents');
         const docsQuery = query(documentsRef, orderBy('uploadedAt', 'desc'));
         unsubDocs = onSnapshot(docsQuery, (snapshot) => {
-            const fetchedDocs: CaseDocument[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CaseDocument));
+            const fetchedDocs: CaseDocument[] = snapshot.docs.map(doc => ({ id: doc.id, ...toSerializable(doc.data()) } as CaseDocument));
             setDocuments(fetchedDocs);
             setLoadingDocuments(false);
         }, (err) => {
@@ -151,7 +152,7 @@ export default function CaseDetailPage() {
         const commentsRef = collection(db, 'cases', caseId, 'comments');
         const commentsQuery = query(commentsRef, orderBy('createdAt', 'asc'));
         unsubComments = onSnapshot(commentsQuery, (snapshot) => {
-            const fetchedComments: CaseComment[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CaseComment));
+            const fetchedComments: CaseComment[] = snapshot.docs.map(doc => ({ id: doc.id, ...toSerializable(doc.data()) } as CaseComment));
             setComments(fetchedComments);
             setLoadingComments(false);
             // Scroll to bottom after comments are loaded/updated
@@ -270,7 +271,7 @@ export default function CaseDetailPage() {
                     <div className="flex items-center gap-1">
                     <CalendarCheck2 className="h-4 w-4 text-muted-foreground"/>
                     <strong className="font-medium text-muted-foreground">Hearing:</strong>{' '}
-                    {caseFile.hearingDate instanceof Timestamp ? caseFile.hearingDate.toDate().toLocaleString() : new Date(caseFile.hearingDate as any).toLocaleString()}
+                    {new Date(caseFile.hearingDate as any).toLocaleString()}
                     </div>
                 )}
                 <div className="md:col-span-2">
@@ -278,10 +279,10 @@ export default function CaseDetailPage() {
                     <p className="mt-1 text-sm whitespace-pre-line">{caseFile.description || 'No description provided.'}</p>
                 </div>
                 <div className="text-xs text-muted-foreground"><strong className="font-medium">Created:</strong>{' '}
-                    {caseFile.createdAt instanceof Timestamp ? caseFile.createdAt.toDate().toLocaleString() : new Date(caseFile.createdAt as any).toLocaleString()}
+                    {new Date(caseFile.createdAt as any).toLocaleString()}
                 </div>
                 <div className="text-xs text-muted-foreground"><strong className="font-medium">Last Updated:</strong>{' '}
-                    {caseFile.updatedAt instanceof Timestamp ? caseFile.updatedAt.toDate().toLocaleString() : new Date(caseFile.updatedAt as any).toLocaleString()}
+                    {new Date(caseFile.updatedAt as any).toLocaleString()}
                 </div>
                 </CardContent>
             </Card>
@@ -330,7 +331,7 @@ export default function CaseDetailPage() {
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground break-all max-w-xs">{doc.description || 'N/A'}</TableCell>
                             <TableCell className="text-sm">
-                                {doc.uploadedAt instanceof Timestamp ? doc.uploadedAt.toDate().toLocaleDateString() : new Date(doc.uploadedAt as any).toLocaleDateString()}
+                                {new Date(doc.uploadedAt as any).toLocaleDateString()}
                             </TableCell>
                             <TableCell>
                             {doc.tags && doc.tags.length > 0 ? (
@@ -394,7 +395,7 @@ export default function CaseDetailPage() {
                                     <p className="text-xs font-semibold">{comment.authorName}</p>
                                     <p className="text-sm whitespace-pre-wrap">{comment.text}</p>
                                     <p className="text-xs opacity-70 mt-1 text-right">
-                                        {comment.createdAt instanceof Timestamp ? comment.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '...'}
+                                        {new Date(comment.createdAt as any).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                                     </p>
                                 </div>
                                 {comment.authorUid === user?.uid && (
@@ -507,10 +508,7 @@ export default function CaseDetailPage() {
                         </Avatar>
                         <div>
                             <p className="text-xl font-semibold">{clientProfileForLawyerView.displayName}</p>
-                            {clientProfileForLawyerView.createdAt instanceof Timestamp && (
-                                <p className="text-sm text-muted-foreground">Joined: {clientProfileForLawyerView.createdAt.toDate().toLocaleDateString()}</p>
-                            )}
-                            {clientProfileForLawyerView.createdAt && !(clientProfileForLawyerView.createdAt instanceof Timestamp) && (
+                            {clientProfileForLawyerView.createdAt && (
                                 <p className="text-sm text-muted-foreground">Joined: {new Date(clientProfileForLawyerView.createdAt as any).toLocaleDateString()}</p>
                             )}
                         </div>
