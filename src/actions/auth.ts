@@ -174,8 +174,8 @@ export async function handleGoogleSignInAction(firebaseUser: FirebaseUser): Prom
       const existingProfile = userDocSnap.data() as UserProfile;
        const createdProfileForContext: UserProfile = {
         ...existingProfile,
-        createdAt: (existingProfile.createdAt as Timestamp).toJSON(),
-      } as UserProfile;
+        createdAt: (existingProfile.createdAt as Timestamp).toJSON() as any, // Convert Timestamp to JSON
+      };
       return { success: true, message: 'User logged in successfully.', userId: uid, createdProfile: createdProfileForContext };
     } else {
       // New user, create a profile for them. Defaulting to 'client'.
@@ -195,8 +195,8 @@ export async function handleGoogleSignInAction(firebaseUser: FirebaseUser): Prom
       
       const createdProfileForContext: UserProfile = {
         ...newUserProfile,
-        createdAt: Timestamp.now().toJSON()
-      } as UserProfile;
+        createdAt: Timestamp.now().toJSON() as any // Convert Timestamp to JSON
+      };
 
       return { success: true, message: 'New user profile created successfully.', userId: uid, createdProfile: createdProfileForContext };
     }
