@@ -35,20 +35,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (userDocSnap.exists()) {
           const profileData = userDocSnap.data() as Omit<UserProfile, 'createdAt'> & { createdAt: Timestamp | { seconds: number, nanoseconds: number } };
           
-          let createdAtTimestamp: Timestamp;
+          let createdAtJson: any; // Can be string or Timestamp for UserProfile type
           if (profileData.createdAt instanceof Timestamp) {
-            createdAtTimestamp = profileData.createdAt;
+            createdAtJson = profileData.createdAt.toJSON();
           } else if (profileData.createdAt && typeof profileData.createdAt === 'object' && 'seconds' in profileData.createdAt) {
             // Handle plain object format for Timestamps that sometimes comes from server actions or serialization
-            createdAtTimestamp = new Timestamp(profileData.createdAt.seconds, profileData.createdAt.nanoseconds);
+             createdAtJson = new Timestamp(profileData.createdAt.seconds, profileData.createdAt.nanoseconds).toJSON();
           } else {
              // Fallback for newly created users where serverTimestamp might not be resolved yet
-            createdAtTimestamp = Timestamp.now();
+            createdAtJson = Timestamp.now().toJSON();
           }
 
           const fetchedProfile: UserProfile = {
             ...(userDocSnap.data() as UserProfile),
-            createdAt: createdAtTimestamp,
+            createdAt: createdAtJson,
           };
           setUserProfile(fetchedProfile);
         } else {
