@@ -19,6 +19,7 @@ const geistSans = Geist({
 export const metadata: Metadata = {
   title: 'CourtCaseFlow',
   description: 'Secure legal case management for small law firms.',
+  manifest: '/manifest.json',
 };
 
 export default function RootLayout({
