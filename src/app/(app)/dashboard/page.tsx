@@ -15,9 +15,30 @@ import { toSerializable } from "@/lib/utils";
 
 const ADMIN_EMAIL = 'admin@caselink.com';
 
+// A helper function to safely create a Date object
+const safeNewDate = (date: any): Date | null => {
+    if (!date) return null;
+    if (date instanceof Date) return date;
+    if (typeof date === 'string' || typeof date === 'number') {
+        const d = new Date(date);
+        if (!isNaN(d.getTime())) {
+            return d;
+        }
+    }
+    // Handle Firestore Timestamp-like objects that might come from toSerializable
+    if (typeof date === 'object' && date.seconds) {
+        const d = new Timestamp(date.seconds, date.nanoseconds).toDate();
+         if (!isNaN(d.getTime())) {
+            return d;
+        }
+    }
+    return null;
+}
+
+
 export default function DashboardPage() {
   const { userProfile, loading } = useAuth();
-  const [dashboardData, setDashboardData] = useState<any>(null);
+  const [dashboardData, setDashboardData] = useState<any>({ cases: [], stats: { activeCases: 0, upcomingHearings: 0, totalDocuments: 0 } });
   const [dataLoading, setDataLoading] = useState(true);
 
   const isAdmin = userProfile?.email === ADMIN_EMAIL;
@@ -38,14 +59,17 @@ export default function DashboardPage() {
       // Manually sort the cases by creation date (newest first)
       const cases: CaseFile[] = querySnapshot.docs.map(doc => toSerializable({ id: doc.id, ...doc.data() }) as CaseFile)
         .sort((a, b) => {
-            const timeA = new Date(a.createdAt as any).getTime();
-            const timeB = new Date(b.createdAt as any).getTime();
+            const timeA = safeNewDate(a.createdAt)?.getTime() || 0;
+            const timeB = safeNewDate(b.createdAt)?.getTime() || 0;
             return timeB - timeA;
         });
 
       
       const activeCases = cases.filter(c => c.status === 'active').length;
-      const upcomingHearings = cases.filter(c => c.hearingDate && new Date(c.hearingDate as any) > new Date()).length;
+      const upcomingHearings = cases.filter(c => {
+          const hearingDate = safeNewDate(c.hearingDate);
+          return hearingDate && hearingDate > new Date();
+      }).length;
       
       const totalDocuments = cases.length * 2; // Simulated average
 
@@ -77,7 +101,7 @@ export default function DashboardPage() {
       const totalCases = casesSnapshot.size;
 
       setDashboardData({
-        stats: { totalUsers, totalLawyers, totalClients, pendingVerifications: pendingLawyers, totalCases }
+        stats: { totalUsers, totalLawyers, totalClients, pendingVerifications: pendingLawyers, totalCases: totalCases }
       });
 
     } catch (error) {
@@ -187,7 +211,10 @@ export default function DashboardPage() {
 
   // LAWYER & CLIENT DASHBOARD VIEW
   const { cases, stats } = dashboardData;
-  const upcomingHearings = cases.filter((c: CaseFile) => c.hearingDate && new Date(c.hearingDate as any) > new Date());
+  const upcomingHearings = cases.filter((c: CaseFile) => {
+      const hearingDate = safeNewDate(c.hearingDate);
+      return hearingDate && hearingDate > new Date();
+  });
 
   return (
     <div className="flex-1 space-y-6">
@@ -260,18 +287,21 @@ export default function DashboardPage() {
         <CardContent>
           {cases.length > 0 ? (
             <ul className="space-y-3">
-              {cases.map((caseItem: CaseFile) => (
-                <li key={caseItem.id} className="flex items-center justify-between p-3 rounded-md border hover:bg-accent/50">
-                  <div>
-                    <p className="font-semibold">{caseItem.caseNumber} - {caseItem.clientName}</p>
-                    <p className="text-sm text-muted-foreground">Status: <span className="capitalize">{caseItem.status}</span></p>
-                    {caseItem.hearingDate && <p className="text-sm text-muted-foreground">Next Hearing: {new Date(caseItem.hearingDate as any).toLocaleDateString()}</p>}
-                  </div>
-                  <Button variant="outline" size="sm" asChild>
-                    <Link href={`/cases/${caseItem.id}`}>View</Link>
-                  </Button>
-                </li>
-              ))}
+              {cases.map((caseItem: CaseFile) => {
+                const hearingDate = safeNewDate(caseItem.hearingDate);
+                return (
+                  <li key={caseItem.id} className="flex items-center justify-between p-3 rounded-md border hover:bg-accent/50">
+                    <div>
+                      <p className="font-semibold">{caseItem.caseNumber} - {caseItem.clientName}</p>
+                      <p className="text-sm text-muted-foreground">Status: <span className="capitalize">{caseItem.status}</span></p>
+                      {hearingDate && <p className="text-sm text-muted-foreground">Next Hearing: {hearingDate.toLocaleDateString()}</p>}
+                    </div>
+                    <Button variant="outline" size="sm" asChild>
+                      <Link href={`/cases/${caseItem.id}`}>View</Link>
+                    </Button>
+                  </li>
+                )
+              })}
             </ul>
           ) : (
             <div className="text-center py-10">
@@ -291,3 +321,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+
