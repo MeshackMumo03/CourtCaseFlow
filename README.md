@@ -1,104 +1,91 @@
-CourtCaseFlow
-CourtCaseFlow is a secure, cloud-based legal case management web application designed for small and mid-sized law firms in Kenya. It helps lawyers and clients manage cases, upload legal documents, track milestones, and receive automated court hearing notifications — all in one simple and affordable platform.
+# CourtCaseFlow
 
-📌 Features
-Role-based Authentication (Lawyers & Clients) using Firebase Authentication
+A secure, cloud-based legal case management web application designed for small and mid-sized law firms in Kenya. It helps lawyers and clients manage cases, upload legal documents, track milestones, and receive automated court hearing notifications — all in one simple and affordable platform. This application is built with the Next.js, React, and Firebase stack.
 
-Real-time Case Tracking via Firebase Firestore
+## ✨ Features
 
-Secure Document Upload & Retrieval with Firebase Storage
+*   **Role-based Authentication**: Secure login and registration for both Lawyers and Clients using Firebase Authentication (Email/Password and Google Sign-In).
+*   **Case Management**: Lawyers can create, view, update, and manage all their cases. Clients can view the status and details of their assigned cases.
+*   **Secure Document Handling**: Upload, store, and retrieve case documents securely using Firebase Storage. Lawyers can also delete unneeded documents.
+*   **AI-Powered Document Tagging**: Leverage Generative AI to automatically suggest relevant tags for uploaded legal documents, making organization a breeze.
+*   **Client Management**: Lawyers have a dedicated view to see a list of all their clients and the cases associated with each one.
+*   **Hearings Schedule**: A dedicated page for both lawyers and clients to view upcoming and past hearing dates.
+*   **Real-time Communication**: A case-specific chat log allows for seamless communication between a lawyer and their client.
+*   **Admin Verification System**: A special admin dashboard to review and approve/reject Lawyer accounts based on LSK and Law Firm verification details.
+*   **Progressive Web App (PWA)**: The application is installable on mobile devices for a native app-like experience and quick access.
 
-Automated Court Date Notifications via Firebase Functions & Email Service (SendGrid alternative supported)
+## 🛠️ Technologies Used
 
-Client Portal for viewing case status and downloading documents
+*   **Framework**: [Next.js](https://nextjs.org/) (with App Router)
+*   **UI Library**: [React.js](https://reactjs.org/)
+*   **Styling**: [Tailwind CSS](https://tailwindcss.com/)
+*   **UI Components**: [ShadCN UI](https://ui.shadcn.com/)
+*   **Backend & Database**: [Firebase](https://firebase.google.com/) (Authentication, Firestore, Storage)
+*   **Generative AI**: [Google AI & Genkit](https://firebase.google.com/docs/genkit)
+*   **Language**: [TypeScript](https://www.typescriptlang.org/)
 
-Responsive, User-Friendly Interface built for accessibility across devices
+## 📂 Project Structure
 
-🛠 Technologies Used
-Frontend
-HTML, CSS, JavaScript
+The project follows a standard Next.js App Router structure.
 
-React.js
-
-Backend
-Firebase Authentication
-
-Firebase Firestore (Database)
-
-Firebase Storage (File Management)
-
-Firebase Cloud Functions (Notifications)
-
-Other Tools
-GitHub (Version Control)
-
-Microsoft Project (Project Scheduling)
-
-Figma (UI/UX Design) – View Design Here
-
-📂 Project Structure
-csharp
-Copy
-Edit
+```
 CourtCaseFlow/
 │
-├── public/           # Public assets
-├── src/              # Source code
-│   ├── components/   # React Components
-│   ├── pages/        # App Pages
-│   ├── services/     # Firebase Service Functions
-│   └── utils/        # Helper Functions
-├── .gitignore
-├── README.md
+├── public/                 # Public assets, icons, and manifest.json
+├── src/
+│   ├── app/                # Main application routes and pages
+│   │   ├── (app)/          # Authenticated routes (dashboard, cases, etc.)
+│   │   └── (auth)/         # Auth routes (login, signup)
+│   ├── actions/            # Server Actions for form submissions & mutations
+│   ├── ai/                 # Genkit flows for AI features
+│   ├── components/         # Reusable React components (UI, layout, features)
+│   ├── contexts/           # React context providers (e.g., AuthContext)
+│   ├── hooks/              # Custom React hooks (e.g., useAuth)
+│   ├── lib/                # Utility functions and library initializations
+│   └── types/              # TypeScript type definitions
+├── .env                    # Environment variables (for Firebase config)
+├── next.config.ts          # Next.js configuration
 └── package.json
-⚙ Installation & Setup
-Clone the repository
+```
 
-bash
-Copy
-Edit
+## ⚙️ Installation & Setup
+
+To get a local copy up and running, follow these simple steps.
+
+### Prerequisites
+
+*   [Node.js](https://nodejs.org/) (v18 or later)
+*   [npm](https://www.npmjs.com/) or [yarn](https://yarnpkg.com/)
+
+### 1. Clone the Repository
+
+```bash
 git clone https://github.com/your-username/CourtCaseFlow.git
 cd CourtCaseFlow
-Install dependencies
+```
 
-bash
-Copy
-Edit
+### 2. Install Dependencies
+
+```bash
 npm install
-Configure Firebase
+```
 
-Create a Firebase project in the Firebase Console
+### 3. Configure Firebase
 
-Enable Authentication, Firestore, Storage, and Cloud Functions
+1.  Create a new project in the [Firebase Console](https://console.firebase.google.com/).
+2.  In your project, enable the following services:
+    *   **Authentication**: Enable the `Email/Password` and `Google` sign-in providers.
+    *   **Firestore Database**: Create a new database.
+    *   **Storage**: Create a new storage bucket.
+3.  Go to your Project Settings and copy the Firebase configuration object.
+4.  Paste your Firebase config into the `src/lib/firebase.ts` file, replacing the placeholder values.
 
-Add your Firebase config to .env file:
+### 4. Run the Application
 
-env
-Copy
-Edit
-REACT_APP_API_KEY=your_api_key
-REACT_APP_AUTH_DOMAIN=your_auth_domain
-REACT_APP_PROJECT_ID=your_project_id
-REACT_APP_STORAGE_BUCKET=your_storage_bucket
-REACT_APP_MESSAGING_SENDER_ID=your_sender_id
-REACT_APP_APP_ID=your_app_id
-Run the app
+Start the development server:
 
-bash
-Copy
-Edit
-npm start
-📅 Development Timeline
-Week	Task
-1-2	Requirement gathering & security plan
-3-4	Authentication & user roles
-5-6	Case management & documents
-7	Email notification setup
-8	UI polishing and testing
-9	Deployment and documentation
+```bash
+npm run dev
+```
 
-📧 Contact
-Developer: Meshack Mutisya
-📍 Nairobi, Kenya
-🔗 LinkedIn
-💻 GitHub
+The application will be available at `http://localhost:9002`.
