@@ -1,69 +1,104 @@
-# CourtCaseFlow
+CourtCaseFlow
+CourtCaseFlow is a secure, cloud-based legal case management web application designed for small and mid-sized law firms in Kenya. It helps lawyers and clients manage cases, upload legal documents, track milestones, and receive automated court hearing notifications — all in one simple and affordable platform.
 
-CourtCaseFlow is a modern, secure, and intuitive web application designed to streamline legal case management for small and mid-sized law firms in Kenya. It empowers lawyers to manage cases, handle documents with AI-powered tools, communicate with clients, and track important milestones, all from a single, accessible platform.
+📌 Features
+Role-based Authentication (Lawyers & Clients) using Firebase Authentication
 
-## ✨ Key Features
+Real-time Case Tracking via Firebase Firestore
 
-- **Role-Based Access Control**: Separate, tailored experiences for **Lawyers**, **Clients**, and a platform **Admin**.
-- **Comprehensive Case Management**: Create, view, edit, and track the status of all your legal cases.
-- **Secure Document Handling**: Upload, store, and manage case documents securely using Firebase Storage.
-- **AI-Powered Document Tagging**: Leverage Generative AI (via Genkit) to automatically suggest relevant tags for uploaded documents, making organization effortless.
-- **Real-time Communication Log**: A dedicated chat-like interface for each case, allowing seamless communication between lawyers and their clients.
-- **Client Management**: Lawyers can view a list of all their clients and see all associated cases for each client.
-- **Admin Verification System**: An admin dashboard to review and approve/reject lawyers based on their LSK and Law Firm credentials.
-- **Progressive Web App (PWA)**: Installable on mobile devices for a native-like experience and quick access from the home screen.
-- **Modern, Responsive UI**: Built with shadcn/ui and Tailwind CSS for a professional, accessible, and user-friendly interface that works on all devices.
+Secure Document Upload & Retrieval with Firebase Storage
 
-## 🛠 Tech Stack
+Automated Court Date Notifications via Firebase Functions & Email Service (SendGrid alternative supported)
 
-- **Framework**: [Next.js](https://nextjs.org/) (with App Router)
-- **Language**: [TypeScript](https://www.typescriptlang.org/)
-- **Styling**: [Tailwind CSS](https://tailwindcss.com/)
-- **UI Components**: [shadcn/ui](https://ui.shadcn.com/)
-- **Backend & Database**: [Firebase](https://firebase.google.com/) (Authentication, Firestore, Storage)
-- **Generative AI**: [Genkit](https://firebase.google.com/docs/genkit) with Google's Gemini models.
-- **Form Management**: [React Hook Form](https://react-hook-form.com/) & [Zod](https://zod.dev/) for validation.
+Client Portal for viewing case status and downloading documents
 
-## ⚙️ Getting Started
+Responsive, User-Friendly Interface built for accessibility across devices
 
-Follow these instructions to get a copy of the project up and running on your local machine for development and testing purposes.
+🛠 Technologies Used
+Frontend
+HTML, CSS, JavaScript
 
-### Prerequisites
+React.js
 
-- [Node.js](https://nodejs.org/) (v18 or later recommended)
-- [npm](https://www.npmjs.com/) or [yarn](https://yarnpkg.com/)
+Backend
+Firebase Authentication
 
-### Installation & Setup
+Firebase Firestore (Database)
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/your-username/CourtCaseFlow.git
-    cd CourtCaseFlow
-    ```
+Firebase Storage (File Management)
 
-2.  **Install dependencies:**
-    ```bash
-    npm install
-    ```
+Firebase Cloud Functions (Notifications)
 
-3.  **Configure Firebase:**
-    - Create a new project in the [Firebase Console](https://console.firebase.google.com/).
-    - In your project, enable **Authentication** (with Email/Password and Google providers), **Firestore**, and **Storage**.
-    - Navigate to **Project Settings** > **General** and find your Firebase config object for a web app.
-    - Copy these credentials into the `firebaseConfig` object in `src/lib/firebase.ts`.
+Other Tools
+GitHub (Version Control)
 
-4.  **Set up Environment Variables:**
-    - This project uses Genkit for AI features, which requires a Gemini API key.
-    - Create a `.env` file in the root of the project.
-    - Obtain an API key from [Google AI Studio](https://aistudio.google.com/).
-    - Add the API key to your `.env` file:
-      ```env
-      GEMINI_API_KEY=your_gemini_api_key
-      ```
+Microsoft Project (Project Scheduling)
 
-5.  **Run the development server:**
-    ```bash
-    npm run dev
-    ```
+Figma (UI/UX Design) – View Design Here
 
-    The application should now be running on [http://localhost:9002](http://localhost:9002).
+📂 Project Structure
+csharp
+Copy
+Edit
+CourtCaseFlow/
+│
+├── public/           # Public assets
+├── src/              # Source code
+│   ├── components/   # React Components
+│   ├── pages/        # App Pages
+│   ├── services/     # Firebase Service Functions
+│   └── utils/        # Helper Functions
+├── .gitignore
+├── README.md
+└── package.json
+⚙ Installation & Setup
+Clone the repository
+
+bash
+Copy
+Edit
+git clone https://github.com/your-username/CourtCaseFlow.git
+cd CourtCaseFlow
+Install dependencies
+
+bash
+Copy
+Edit
+npm install
+Configure Firebase
+
+Create a Firebase project in the Firebase Console
+
+Enable Authentication, Firestore, Storage, and Cloud Functions
+
+Add your Firebase config to .env file:
+
+env
+Copy
+Edit
+REACT_APP_API_KEY=your_api_key
+REACT_APP_AUTH_DOMAIN=your_auth_domain
+REACT_APP_PROJECT_ID=your_project_id
+REACT_APP_STORAGE_BUCKET=your_storage_bucket
+REACT_APP_MESSAGING_SENDER_ID=your_sender_id
+REACT_APP_APP_ID=your_app_id
+Run the app
+
+bash
+Copy
+Edit
+npm start
+📅 Development Timeline
+Week	Task
+1-2	Requirement gathering & security plan
+3-4	Authentication & user roles
+5-6	Case management & documents
+7	Email notification setup
+8	UI polishing and testing
+9	Deployment and documentation
+
+📧 Contact
+Developer: Meshack Mutisya
+📍 Nairobi, Kenya
+🔗 LinkedIn
+💻 GitHub
