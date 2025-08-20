@@ -10,7 +10,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertTriangle, ArrowLeft, Edit3, FilePlus, Loader2, Tags, User, Mail, Phone, Building, MapPin, ShieldCheck, Briefcase, CalendarCheck2, UserCircle2, FileText, Download, MessageSquare, Send } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Edit3, FilePlus, Loader2, Tags, User, Mail, Phone, Building, MapPin, ShieldCheck, Briefcase, CalendarCheck2, UserCircle2, FileText, Download, MessageSquare, Send, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { DocumentUploadForm } from '@/components/documents/DocumentUploadForm';
 import { AiTaggingTool } from '@/components/documents/AiTaggingTool';
@@ -21,6 +21,18 @@ import Image from 'next/image';
 import { Textarea } from '@/components/ui/textarea';
 import { addCommentAction } from '@/actions/comments';
 import { cn, toSerializable } from '@/lib/utils';
+import { deleteDocumentAction } from '@/actions/documents';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
 
 export default function CaseDetailPage() {
   const params = useParams();
@@ -46,6 +58,9 @@ export default function CaseDetailPage() {
   const [newComment, setNewComment] = useState('');
   const [isPostingComment, setIsPostingComment] = useState(false);
   const commentsEndRef = useRef<HTMLDivElement>(null);
+
+  const [docToDelete, setDocToDelete] = useState<CaseDocument | null>(null);
+  const [isDeletingDoc, setIsDeletingDoc] = useState<string | null>(null);
 
 
   const getInitials = (name: string | null | undefined) => {
@@ -232,6 +247,23 @@ export default function CaseDetailPage() {
       setIsPostingComment(false);
   }
 
+  const handleDeleteDocument = async () => {
+    if (!docToDelete) return;
+
+    setIsDeletingDoc(docToDelete.id);
+    const result = await deleteDocumentAction(caseId, docToDelete.id, docToDelete.storagePath);
+
+    if (result.success) {
+        toast({ title: 'Success', description: result.message });
+    } else {
+        toast({ variant: 'destructive', title: 'Error', description: result.message });
+    }
+    
+    setDocToDelete(null);
+    setIsDeletingDoc(null);
+  }
+
+
   return (
     <div className="space-y-6 p-1 md:p-4 lg:p-6">
       <Button variant="outline" onClick={() => router.back()} className="mb-4 print:hidden">
@@ -341,12 +373,26 @@ export default function CaseDetailPage() {
                                 <span className="text-xs text-muted-foreground">No tags</span>
                             )}
                             </TableCell>
-                            <TableCell className="text-right">
-                            <Button variant="outline" size="sm" asChild>
-                                <a href={doc.downloadURL} target="_blank" rel="noopener noreferrer">
-                                <Download className="mr-2 h-4 w-4" /> Download
-                                </a>
-                            </Button>
+                            <TableCell className="text-right space-x-2">
+                                <Button variant="outline" size="sm" asChild>
+                                    <a href={doc.downloadURL} target="_blank" rel="noopener noreferrer">
+                                    <Download className="mr-2 h-4 w-4" /> Download
+                                    </a>
+                                </Button>
+                                {isLawyerOwner && (
+                                    <Button 
+                                        variant="destructive" 
+                                        size="sm"
+                                        onClick={() => setDocToDelete(doc)}
+                                        disabled={isDeletingDoc === doc.id}
+                                    >
+                                        {isDeletingDoc === doc.id ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <Trash2 className="h-4 w-4" />
+                                        )}
+                                    </Button>
+                                )}
                             </TableCell>
                         </TableRow>
                         ))}
@@ -540,6 +586,25 @@ export default function CaseDetailPage() {
             onDocumentUploaded={handleDocumentUploaded}
         />
       )}
+
+      <AlertDialog open={!!docToDelete} onOpenChange={(isOpen) => !isOpen && setDocToDelete(null)}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                <AlertDialogDescription>
+                    This action cannot be undone. This will permanently delete the document
+                    <span className="font-bold"> "{docToDelete?.name}"</span> from the case.
+                </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDeleteDocument} className="bg-destructive hover:bg-destructive/90">
+                    Yes, delete document
+                </AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </div>
   );
 }

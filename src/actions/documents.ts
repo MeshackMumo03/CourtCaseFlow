@@ -1,8 +1,8 @@
 
 'use server';
 
-import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
-import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
+import { addDoc, collection, doc, serverTimestamp, updateDoc, deleteDoc } from 'firebase/firestore';
+import { getDownloadURL, ref as storageRef, uploadBytes, deleteObject } from 'firebase/storage';
 import { db, storage } from '@/lib/firebase';
 import type { CaseDocument } from '@/types';
 import { useAuth } from '@/hooks/use-auth'; // This hook can't be used in server actions directly
@@ -97,5 +97,43 @@ export async function saveDocumentTagsAction(caseId: string, documentId: string,
     } catch (error: any) {
         console.error("Error saving document tags:", error);
         return { success: false, message: error.message || "Failed to save tags."};
+    }
+}
+
+interface DeleteResult {
+    success: boolean;
+    message: string;
+}
+
+export async function deleteDocumentAction(caseId: string, documentId: string, storagePath: string): Promise<DeleteResult> {
+    if (!caseId || !documentId || !storagePath) {
+        return { success: false, message: "Missing required parameters for deletion."};
+    }
+
+    try {
+        // 1. Delete file from Firebase Storage
+        const fileRef = storageRef(storage, storagePath);
+        await deleteObject(fileRef);
+
+        // 2. Delete document record from Firestore
+        const docRef = doc(db, 'cases', caseId, 'documents', documentId);
+        await deleteDoc(docRef);
+
+        return { success: true, message: "Document deleted successfully." };
+    } catch (error: any) {
+        console.error("Error deleting document:", error);
+        // If Firestore deletion fails after storage deletion, there's a dangling reference.
+        // A more robust system might have retry logic or a cleanup function.
+        if (error.code === 'storage/object-not-found') {
+             // If file is already gone from storage, try to delete firestore doc anyway
+            try {
+                const docRef = doc(db, 'cases', caseId, 'documents', documentId);
+                await deleteDoc(docRef);
+                return { success: true, message: "Document record cleaned up." };
+            } catch (dbError: any) {
+                 return { success: false, message: dbError.message || "Failed to delete document record."};
+            }
+        }
+        return { success: false, message: error.message || "Failed to delete document." };
     }
 }
