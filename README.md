@@ -67,10 +67,3 @@ Follow these instructions to get a copy of the project up and running on your lo
     ```
 
     The application should now be running on [http://localhost:9002](http://localhost:9002).
-
-### Default Admin User
-
-For administrative functions, such as lawyer verification, the application uses a hardcoded admin email:
-- **Email:** `admin@caselink.com`
-
-Create a user with this email to access the admin dashboard and features.
