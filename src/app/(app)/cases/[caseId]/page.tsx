@@ -81,7 +81,7 @@ export default function CaseDetailPage() {
       const caseDocSnap = await getDoc(caseDocRef);
 
       if (caseDocSnap.exists()) {
-        const data = caseDocSnap.data() as Omit<CaseFile, 'id'>;
+        const data = toSerializable(caseDocSnap.data()) as Omit<CaseFile, 'id'>;
         
         let canViewCase = false;
         if (userProfile.role === 'lawyer' && data.lawyerUid === userProfile.uid) {
@@ -91,7 +91,7 @@ export default function CaseDetailPage() {
         }
 
         if (canViewCase) {
-          const fetchedCaseFile = { id: caseDocSnap.id, ...toSerializable(data) } as CaseFile;
+          const fetchedCaseFile = { id: caseDocSnap.id, ...data } as CaseFile;
           setCaseFile(fetchedCaseFile);
 
           if (fetchedCaseFile.lawyerUid) {
@@ -108,7 +108,7 @@ export default function CaseDetailPage() {
             const clientQuery = query(collection(db, 'users'), where('email', '==', fetchedCaseFile.clientEmail), where('role', '==', 'client'));
             const clientSnapshot = await getDocs(clientQuery);
             if (!clientSnapshot.empty) {
-              const clientData = clientSnapshot.docs[0].data() as UserProfile;
+              const clientData = clientSnapshot.docs[0].data();
               setClientProfileForLawyerView({ ...toSerializable(clientData), uid: clientSnapshot.docs[0].id } as UserProfile);
             }
           }
