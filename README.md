@@ -1,5 +1,5 @@
 CourtCaseFlow
-CourtCaseFlow is a secure, cloud-based legal case management web application designed for small and mid-sized law firms in Kenya. It helps lawyers and clients manage cases, upload legal documents, track milestones, and receive automated court hearing notifications — all in one simple and affordable platform.
+CourtCaseFlow is a secure, cloud-based legal case management web application designed for small and mid-sized law firms in Kenya. It helps lawyers and clients manage cases, upload legal documents, track milestones, and receive automated court hearing notifications all in one simple and affordable platform.
 
 📌 Features
 Role-based Authentication (Lawyers & Clients) using Firebase Authentication
@@ -16,7 +16,7 @@ Responsive, User-Friendly Interface built for accessibility across devices
 
 🛠 Technologies Used
 Frontend
-HTML, CSS, JavaScript
+JavaScript
 
 React.js
 
@@ -99,6 +99,3 @@ Week	Task
 
 📧 Contact
 Developer: Meshack Mutisya
-📍 Nairobi, Kenya
-🔗 LinkedIn
-💻 GitHub
