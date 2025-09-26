@@ -1,6 +1,6 @@
 # CourtCaseFlow
 
-A secure, cloud-based legal case management web application designed for small and mid-sized law firms in Kenya. It helps lawyers and clients manage cases, upload legal documents, track milestones, and receive automated court hearing notifications — all in one simple and affordable platform. This application is built with the Next.js, React, and Firebase stack.
+A secure, cloud-based legal case management web application designed for small and mid-sized law firms in Kenya. It helps lawyers and clients manage cases, upload legal documents, track milestones, and receive automated court hearing notifications, all in one simple and affordable platform. This application is built with the Next.js, React, and Firebase stack.
 
 ## ✨ Features
 
