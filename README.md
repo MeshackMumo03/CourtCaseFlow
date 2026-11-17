@@ -1,91 +1,57 @@
-# CourtCaseFlow
+# CourtCaseFlow v2
 
-A secure, cloud-based legal case management web application designed for small and mid-sized law firms in Kenya. It helps lawyers and clients manage cases, upload legal documents, track milestones, and receive automated court hearing notifications, all in one simple and affordable platform. This application is built with the Next.js, React, and Firebase stack.
+Secure legal case management for small law firms: lawyers manage cases, hearings and documents; clients follow their cases and message their lawyer.
 
-## ✨ Features
+This is a rewrite of the original Firebase app with no Firebase dependency:
 
-*   **Role-based Authentication**: Secure login and registration for both Lawyers and Clients using Firebase Authentication (Email/Password and Google Sign-In).
-*   **Case Management**: Lawyers can create, view, update, and manage all their cases. Clients can view the status and details of their assigned cases.
-*   **Secure Document Handling**: Upload, store, and retrieve case documents securely using Firebase Storage. Lawyers can also delete unneeded documents.
-*   **AI-Powered Document Tagging**: Leverage Generative AI to automatically suggest relevant tags for uploaded legal documents, making organization a breeze.
-*   **Client Management**: Lawyers have a dedicated view to see a list of all their clients and the cases associated with each one.
-*   **Hearings Schedule**: A dedicated page for both lawyers and clients to view upcoming and past hearing dates.
-*   **Real-time Communication**: A case-specific chat log allows for seamless communication between a lawyer and their client.
-*   **Admin Verification System**: A special admin dashboard to review and approve/reject Lawyer accounts based on LSK and Law Firm verification details.
-*   **Progressive Web App (PWA)**: The application is installable on mobile devices for a native app-like experience and quick access.
+| Concern | v1 (Firebase) | v2 |
+| --- | --- | --- |
+| Database | Firestore | **Neon Postgres** (free plan, created from the Vercel dashboard) via Drizzle ORM |
+| Sign-in | Firebase Auth | **Better Auth** (runs inside the app; no extra service) |
+| Files | Firebase Storage | **Cloudinary** private ("authenticated") storage |
+| Email | Firebase "Trigger Email" extension | Any SMTP server, e.g. Gmail with an App Password |
+| Hosting | Firebase App Hosting | **Vercel** (Hobby, free) |
+| AI tagging | Genkit + Gemini | Genkit + Gemini (unchanged, now server-only) |
 
-## 🛠️ Technologies Used
+## Security changes
 
-*   **Framework**: [Next.js](https://nextjs.org/) (with App Router)
-*   **UI Library**: [React.js](https://reactjs.org/)
-*   **Styling**: [Tailwind CSS](https://tailwindcss.com/)
-*   **UI Components**: [ShadCN UI](https://ui.shadcn.com/)
-*   **Backend & Database**: [Firebase](https://firebase.google.com/) (Authentication, Firestore, Storage)
-*   **Generative AI**: [Google AI & Genkit](https://firebase.google.com/docs/genkit)
-*   **Language**: [TypeScript](https://www.typescriptlang.org/)
+- **Server-side authorization everywhere.** Pages and server actions read the user from the session cookie and check ownership in the database query. v1 trusted user IDs sent by the browser, so anyone could create, edit or read any case, upload files as anyone, or approve lawyers.
+- **Email verification is required.** Clients see cases by matching their email, so the address must be proven first.
+- **Real admin role.** Admin is a database role granted with `npm run make-admin`, not a hard-coded email address.
+- **Private documents.** Files are stored as private Cloudinary assets. Downloads go through `/api/documents/:id/download`, which checks access and then redirects to a link that expires after 5 minutes. Uploads are checked by their file signature, not the browser-supplied type, and limited to 4 MB.
+- **Real two-factor authentication** (authenticator app plus backup codes), replacing the simulated setup.
+- **Rate limiting** on sign-in, sign-up, password reset and 2FA. **Breached-password check** (Have I Been Pwned k-anonymity API) and a 10-character minimum.
+- **Strict security headers:** a per-request nonce Content-Security-Policy, HSTS, `X-Frame-Options: DENY`, `nosniff`, Referrer-Policy and Permissions-Policy.
+- **No secrets in code.** All configuration comes from validated environment variables (`src/lib/env.ts`).
+- **AI tagging is server-only.** The Gemini flow is no longer a public server action. The server reads the file itself after an access check.
+- **Smaller attack surface.** Lawyers can no longer list every client on the platform, the build fails on type errors, and unused dependencies (PWA plugin, Firebase SDKs, charts) are removed.
 
-## 📂 Project Structure
+## Setup
 
-The project follows a standard Next.js App Router structure.
+1. **Install:** `npm install`
+2. **Database:** in the Vercel dashboard, open your project, go to **Storage**, choose **Create Database**, then **Neon** (free). Link the project locally with `vercel link`, then run `vercel env pull .env.local`.
+3. **Environment:** copy `.env.example` to `.env.local` (or add to the file you pulled) and fill in the Better Auth secret, Cloudinary keys and SMTP details.
+4. **Create tables:** `npm run db:migrate`
+5. **Run:** `npm run dev`, then open http://localhost:9002
+6. **Make yourself admin:** sign up, verify your email, then run `npm run make-admin -- you@example.com`
 
-```
-CourtCaseFlow/
-│
-├── public/                 # Public assets, icons, and manifest.json
-├── src/
-│   ├── app/                # Main application routes and pages
-│   │   ├── (app)/          # Authenticated routes (dashboard, cases, etc.)
-│   │   └── (auth)/         # Auth routes (login, signup)
-│   ├── actions/            # Server Actions for form submissions & mutations
-│   ├── ai/                 # Genkit flows for AI features
-│   ├── components/         # Reusable React components (UI, layout, features)
-│   ├── contexts/           # React context providers (e.g., AuthContext)
-│   ├── hooks/              # Custom React hooks (e.g., useAuth)
-│   ├── lib/                # Utility functions and library initializations
-│   └── types/              # TypeScript type definitions
-├── .env                    # Environment variables (for Firebase config)
-├── next.config.ts          # Next.js configuration
-└── package.json
-```
+Without SMTP settings in development, verification and reset emails are printed in the terminal.
 
-## ⚙️ Installation & Setup
+## Deploying to Vercel
 
-To get a local copy up and running, follow these simple steps.
+Add the same environment variables in **Project → Settings → Environment Variables** and set `BETTER_AUTH_URL` to the production URL. Run `npm run db:migrate` against the production database before the first deploy.
 
-### Prerequisites
+## Scripts
 
-*   [Node.js](https://nodejs.org/) (v18 or later)
-*   [npm](https://www.npmjs.com/) or [yarn](https://yarnpkg.com/)
+| Script | Purpose |
+| --- | --- |
+| `npm run dev` | Development server on port 9002 |
+| `npm run build` / `start` | Production build / server |
+| `npm run typecheck` / `lint` | Type check / ESLint |
+| `npm run db:generate` | Create a migration after changing `src/db/schema.ts` |
+| `npm run db:migrate` | Apply migrations |
+| `npm run make-admin -- <email>` | Grant admin to a verified account |
 
-### 1. Clone the Repository
+## Not migrated
 
-```bash
-git clone https://github.com/your-username/CourtCaseFlow.git
-cd CourtCaseFlow
-```
-
-### 2. Install Dependencies
-
-```bash
-npm install
-```
-
-### 3. Configure Firebase
-
-1.  Create a new project in the [Firebase Console](https://console.firebase.google.com/).
-2.  In your project, enable the following services:
-    *   **Authentication**: Enable the `Email/Password` and `Google` sign-in providers.
-    *   **Firestore Database**: Create a new database.
-    *   **Storage**: Create a new storage bucket.
-3.  Go to your Project Settings and copy the Firebase configuration object.
-4.  Paste your Firebase config into the `src/lib/firebase.ts` file, replacing the placeholder values.
-
-### 4. Run the Application
-
-Start the development server:
-
-```bash
-npm run dev
-```
-
-The application will be available at `http://localhost:9002`.
+Existing Firestore data and Firebase Auth users were not copied over. Users need to sign up again. Once v2 is live, delete the old Firebase project, or lock it down with deny-all rules. Its config was committed to the v1 repository, and it had no security rules in that repo.

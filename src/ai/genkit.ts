@@ -1,7 +1,9 @@
-import {genkit} from 'genkit';
-import {googleAI} from '@genkit-ai/googleai';
+import 'server-only';
+import { genkit } from 'genkit';
+import { googleAI } from '@genkit-ai/google-genai';
 
+// Reads GEMINI_API_KEY from the environment.
 export const ai = genkit({
   plugins: [googleAI()],
-  model: 'googleai/gemini-2.0-flash',
+  model: googleAI.model('gemini-flash-latest'),
 });

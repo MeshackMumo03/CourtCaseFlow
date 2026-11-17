@@ -1,10 +1,10 @@
+import { redirect } from 'next/navigation';
 import { LoginForm } from '@/components/auth/LoginForm';
-import type { Metadata } from 'next';
+import { googleEnabled } from '@/lib/env';
+import { getSession } from '@/server/session';
 
-export const metadata: Metadata = {
-  title: 'Login - CourtCaseFlow',
-};
-
-export default function LoginPage() {
-  return <LoginForm />;
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
+  if (await getSession()) redirect('/dashboard');
+  const { next } = await searchParams;
+  return <LoginForm googleEnabled={googleEnabled} next={next} />;
 }

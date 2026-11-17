@@ -1,20 +1,10 @@
-
 import type { Metadata } from 'next';
-import { Geist } from 'next/font/google'; // Using Geist Sans as primary
+import { Geist } from 'next/font/google';
+import { headers } from 'next/headers';
 import './globals.css';
-import { AuthProvider } from '@/contexts/auth-context';
-import { Toaster } from "@/components/ui/toaster";
+import { Toaster } from '@/components/ui/toaster';
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
-  subsets: ['latin'],
-});
-
-// Geist Mono is available if needed, but prompt asks for sans-serif for main content.
-// const geistMono = Geist_Mono({
-//   variable: '--font-geist-mono',
-//   subsets: ['latin'],
-// });
+const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
 
 export const metadata: Metadata = {
   title: 'CourtCaseFlow',
@@ -22,18 +12,25 @@ export const metadata: Metadata = {
   manifest: '/manifest.json',
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  // Reading the nonce makes every page render per request, which the CSP nonce requires.
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
+
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.variable} antialiased font-sans`} suppressHydrationWarning={true}>
-        <AuthProvider>
-          {children}
-          <Toaster />
-        </AuthProvider>
+      <head>
+        {/* Apply the saved theme before paint to avoid a flash. */}
+        <script
+          nonce={nonce}
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{var t=localStorage.getItem('theme');if(t==='dark'||(!t&&matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.classList.add('dark')}catch(e){}",
+          }}
+        />
+      </head>
+      <body className={`${geistSans.variable} font-sans antialiased`}>
+        {children}
+        <Toaster />
       </body>
     </html>
   );

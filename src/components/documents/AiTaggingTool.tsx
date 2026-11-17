@@ -1,155 +1,106 @@
-
 'use client';
 
+import { CheckCircle, Loader2, Tags, X, XCircle } from 'lucide-react';
 import { useState } from 'react';
+
+import { saveDocumentTagsAction, suggestDocumentTagsAction } from '@/actions/documents';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Loader2, Tags, CheckCircle, XCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { tagLegalDocument, type TagLegalDocumentInput } from '@/ai/flows/tag-legal-documents';
-import { saveDocumentTagsAction } from '@/actions/documents';
 
-interface AiTaggingToolProps {
-  documentName: string;
-  documentDataUri: string;
+interface Props {
   caseId: string;
   documentId: string;
-  onTagsApplied: () => void;
+  documentName: string;
+  onDone: () => void;
 }
 
-export function AiTaggingTool({
-  documentName,
-  documentDataUri,
-  caseId,
-  documentId,
-  onTagsApplied,
-}: AiTaggingToolProps) {
-  const [isSuggesting, setIsSuggesting] = useState(false);
-  const [isApplying, setIsApplying] = useState(false);
-  const [suggestedTags, setSuggestedTags] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
+export function AiTaggingTool({ caseId, documentId, documentName, onDone }: Props) {
   const { toast } = useToast();
+  const [tags, setTags] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const busy = suggesting || applying;
 
-  const isLoading = isSuggesting || isApplying;
-
-  const handleSuggestTags = async () => {
-    setIsSuggesting(true);
+  async function suggest() {
+    setSuggesting(true);
     setError(null);
-    setSuggestedTags([]);
-
-    const input: TagLegalDocumentInput = {
-      documentDataUri: documentDataUri,
-      documentDescription: `Legal document named "${documentName}" for case ID ${caseId}.`,
-    };
-
-    try {
-      const result = await tagLegalDocument(input);
-      if (result && result.tags) {
-        setSuggestedTags(result.tags);
-        toast({ title: 'Tags Suggested', description: `${result.tags.length} tags suggested by AI.` });
-      } else {
-        setError('AI could not suggest tags for this document.');
-        toast({ variant: 'destructive', title: 'Tagging Failed', description: 'No tags were returned.' });
-      }
-    } catch (err: any) {
-      console.error('AI Tagging Error:', err);
-      setError(err.message || 'An error occurred while suggesting tags.');
-      toast({ variant: 'destructive', title: 'Tagging Error', description: err.message || 'An unexpected error occurred.' });
-    } finally {
-      setIsSuggesting(false);
+    // The server reads the file from storage itself; the browser never sends document contents to the AI.
+    const result = await suggestDocumentTagsAction(caseId, documentId);
+    setSuggesting(false);
+    if (!result.success) {
+      setError(result.message);
+      return;
     }
-  };
+    setTags(result.data.tags);
+  }
 
-  const handleApplyTags = async () => {
-    if (suggestedTags.length === 0) {
-        toast({variant: 'destructive', title: "No Tags", description: "There are no tags to apply."})
-        return;
+  async function apply() {
+    setApplying(true);
+    const result = await saveDocumentTagsAction(caseId, documentId, tags);
+    setApplying(false);
+    if (!result.success) {
+      toast({ variant: 'destructive', title: 'Failed to apply tags', description: result.message });
+      return;
     }
-    setIsApplying(true);
-    
-    try {
-        const result = await saveDocumentTagsAction(caseId, documentId, suggestedTags);
-        if (result.success) {
-            toast({ title: 'Tags Applied', description: 'Tags have been saved for the document.' });
-            onTagsApplied();
-        } else {
-            throw new Error(result.message);
-        }
-    } catch (error: any) {
-        toast({ variant: 'destructive', title: 'Failed to Apply Tags', description: error.message || 'An unexpected error occurred.' });
-    } finally {
-        setIsApplying(false);
-    }
-  };
+    toast({ title: 'Tags applied' });
+    onDone();
+  }
 
   return (
-    <Card className="mt-6 shadow-md border-primary/50">
+    <Card className="mt-6 border-primary/50 shadow-md">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Tags className="h-6 w-6 text-primary" />
           AI Document Tagging
         </CardTitle>
         <CardDescription>
-          Document <strong>{documentName}</strong> has been uploaded. Would you like AI to suggest relevant tags?
+          Suggest tags for <strong>{documentName}</strong>. You can remove any before applying.
         </CardDescription>
       </CardHeader>
       <CardContent>
         {error && (
-          <div className="mb-4 p-3 rounded-md bg-destructive/10 text-destructive flex items-center gap-2">
+          <div className="mb-4 flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-destructive">
             <XCircle className="h-5 w-5" />
             <p>{error}</p>
           </div>
         )}
-        {suggestedTags.length > 0 && (
-          <div className="mb-4 space-y-2">
-            <h4 className="font-semibold">Suggested Tags:</h4>
-            <div className="flex flex-wrap gap-2">
-              {suggestedTags.map((tag, index) => (
-                <Badge key={index} variant="secondary" className="text-sm px-3 py-1">
-                  {tag}
-                </Badge>
-              ))}
-            </div>
+        {tags.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {tags.map((tag) => (
+              <Badge key={tag} variant="secondary" className="px-3 py-1 text-sm">
+                {tag}
+                <button type="button" className="ml-1" onClick={() => setTags((t) => t.filter((x) => x !== tag))} aria-label={`Remove ${tag}`}>
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            ))}
           </div>
         )}
-        {isSuggesting && (
+        {suggesting && (
           <div className="flex items-center justify-center p-6">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
             <p className="ml-2">AI is reading the document...</p>
           </div>
         )}
       </CardContent>
-      <CardFooter className="flex justify-between items-center">
-         <Button variant="ghost" onClick={onTagsApplied} disabled={isLoading}>
-            Skip for now
+      <CardFooter className="flex items-center justify-between">
+        <Button variant="ghost" onClick={onDone} disabled={busy}>
+          Skip for now
         </Button>
-        <div className="flex gap-2">
-        {suggestedTags.length === 0 ? (
-          <Button onClick={handleSuggestTags} disabled={isLoading}>
-            {isSuggesting ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Tags className="mr-2 h-4 w-4" />
-            )}
+        {tags.length === 0 ? (
+          <Button onClick={suggest} disabled={busy}>
+            {suggesting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Tags className="mr-2 h-4 w-4" />}
             Suggest Tags
           </Button>
         ) : (
-          <>
-            <Button variant="outline" onClick={() => { setSuggestedTags([]); setError(null); }} disabled={isLoading}>
-              Clear Suggestions
-            </Button>
-            <Button onClick={handleApplyTags} disabled={isLoading}>
-              {isApplying ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <CheckCircle className="mr-2 h-4 w-4" />
-              )}
-              Apply Tags
-            </Button>
-          </>
+          <Button onClick={apply} disabled={busy}>
+            {applying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
+            Apply Tags
+          </Button>
         )}
-        </div>
       </CardFooter>
     </Card>
   );

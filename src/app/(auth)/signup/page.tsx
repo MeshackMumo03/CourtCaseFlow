@@ -1,10 +1,9 @@
+import { redirect } from 'next/navigation';
 import { SignupForm } from '@/components/auth/SignupForm';
-import type { Metadata } from 'next';
+import { googleEnabled } from '@/lib/env';
+import { getSession } from '@/server/session';
 
-export const metadata: Metadata = {
-  title: 'Sign Up - CourtCaseFlow',
-};
-
-export default function SignupPage() {
-  return <SignupForm />;
+export default async function SignupPage() {
+  if (await getSession()) redirect('/dashboard');
+  return <SignupForm googleEnabled={googleEnabled} />;
 }

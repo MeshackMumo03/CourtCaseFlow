@@ -1,139 +1,136 @@
-
 'use server';
 
-import { addDoc, collection, doc, serverTimestamp, updateDoc, deleteDoc } from 'firebase/firestore';
-import { getDownloadURL, ref as storageRef, uploadBytes, deleteObject } from 'firebase/storage';
-import { db, storage } from '@/lib/firebase';
-import type { CaseDocument } from '@/types';
-import { useAuth } from '@/hooks/use-auth'; // This hook can't be used in server actions directly
+import { and, eq } from 'drizzle-orm';
+import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
+import { db } from '@/db';
+import { documents } from '@/db/schema';
+import { tagLegalDocument } from '@/ai/flows/tag-legal-documents';
+import { env } from '@/lib/env';
+import {
+  deleteCaseDocument,
+  detectDocumentType,
+  MAX_DOCUMENT_BYTES,
+  signedDocumentUrl,
+  uploadCaseDocument,
+} from '@/lib/storage';
+import { tagsSchema } from '@/lib/validation';
+import { runAction, UserFacingError } from '@/server/action-utils';
+import { getCaseAccess, isUuid } from '@/server/cases';
+import { requireUser } from '@/server/session';
 
-interface UploadResult {
-  success: boolean;
-  message: string;
-  document?: CaseDocument;
+/** Only the lawyer who owns the case may change its documents. */
+async function requireOwnedCase(caseId: string) {
+  const me = await requireUser(['lawyer']);
+  const access = await getCaseAccess(caseId, me);
+  if (!access?.isOwner) throw new UserFacingError('Case not found.');
+  return me;
 }
 
-export async function uploadDocumentAction(
-  caseId: string,
-  uploaderUid: string,
-  formData: FormData
-): Promise<UploadResult> {
-  const file = formData.get('document') as File | null;
-  const description = formData.get('description') as string | null;
-
-  if (!file) {
-    return { success: false, message: 'No file provided.' };
-  }
-  if (!caseId || !uploaderUid) {
-    return { success: false, message: 'Case ID or uploader ID is missing.' };
-  }
-
-  try {
-    // 1. Upload file to Firebase Storage
-    const filePath = `cases/${caseId}/documents/${Date.now()}_${file.name}`;
-    const fileStorageRef = storageRef(storage, filePath);
-    const uploadResult = await uploadBytes(fileStorageRef, file);
-    const downloadURL = await getDownloadURL(uploadResult.ref);
-
-    // 2. Create document record in Firestore
-    const documentsColRef = collection(db, 'cases', caseId, 'documents');
-    const newDocData: Omit<CaseDocument, 'id'> = {
-      name: file.name,
-      description: description || '',
-      storagePath: filePath,
-      downloadURL,
-      uploaderUid,
-      uploadedAt: serverTimestamp() as any, // Let server set the timestamp
-      mimeType: file.type,
-      tags: [],
-    };
-
-    const docRef = await addDoc(documentsColRef, newDocData);
-
-    // We can't return the full document with the server timestamp immediately.
-    // Instead, we construct a client-side version for immediate UI update.
-    const createdDocument: CaseDocument = {
-      id: docRef.id,
-      ...newDocData,
-      uploadedAt: new Date() as any, // Use client time for immediate feedback
-    };
-
-    return { success: true, message: 'Document uploaded successfully.', document: createdDocument };
-  } catch (error: any) {
-    console.error('Error uploading document:', error);
-    switch (error.code) {
-        case 'storage/unauthorized':
-            return {
-                success: false,
-                message: 'Permission Denied: Your security rules do not allow file uploads. Please check your Firebase Storage rules.'
-            };
-        case 'storage/unknown':
-            return {
-                success: false,
-                message: "Firebase Storage Error: This is often a CORS configuration issue. Please check your bucket's CORS settings in the Google Cloud console. Your app's domain must be an allowed origin."
-            };
-        default:
-            return { success: false, message: error.message || 'Failed to upload document.' };
-    }
-  }
+/** Strip path separators and control characters from a user-supplied file name. */
+function safeFileName(name: string) {
+  const cleaned = name.replace(/[\\/\u0000-\u001f\u007f]/g, '_').trim();
+  return (cleaned || 'document').slice(0, 200);
 }
 
-interface TagSaveResult {
-  success: boolean;
-  message: string;
-}
+export async function uploadDocumentAction(caseId: string, formData: FormData) {
+  return runAction('uploadDocument', async () => {
+    const me = await requireOwnedCase(caseId);
 
-export async function saveDocumentTagsAction(caseId: string, documentId: string, tags: string[]): Promise<TagSaveResult> {
-    if (!caseId || !documentId) {
-        return { success: false, message: "Missing case or document ID." };
-    }
-    
+    const file = formData.get('document');
+    const description = z.string().trim().max(500).parse(formData.get('description') ?? '');
+    if (!(file instanceof File) || file.size === 0) throw new UserFacingError('Choose a file to upload.');
+    if (file.size > MAX_DOCUMENT_BYTES) throw new UserFacingError('Files must be 4 MB or smaller.');
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const type = detectDocumentType(buffer);
+    if (!type) throw new UserFacingError('Only PDF, Word (.doc/.docx), JPEG or PNG files are allowed.');
+
+    const { storageKey, bytes } = await uploadCaseDocument(buffer, caseId, type.ext);
     try {
-        const docRef = doc(db, 'cases', caseId, 'documents', documentId);
-        await updateDoc(docRef, {
-            tags: tags
-        });
-        return { success: true, message: "Tags saved successfully."};
-    } catch (error: any) {
-        console.error("Error saving document tags:", error);
-        return { success: false, message: error.message || "Failed to save tags."};
+      const [created] = await db
+        .insert(documents)
+        .values({
+          caseId,
+          name: safeFileName(file.name),
+          description,
+          storageKey,
+          mimeType: type.mime,
+          sizeBytes: bytes,
+          uploaderId: me.id,
+        })
+        .returning({ id: documents.id, name: documents.name });
+
+      revalidatePath(`/cases/${caseId}`);
+      return { success: true as const, message: 'Document uploaded.', data: created };
+    } catch (error) {
+      // Don't leave an orphaned file in storage if the database write fails.
+      await deleteCaseDocument(storageKey).catch(() => undefined);
+      throw error;
     }
+  });
 }
 
-interface DeleteResult {
-    success: boolean;
-    message: string;
+async function getOwnedDocument(caseId: string, documentId: string) {
+  if (!isUuid(documentId)) throw new UserFacingError('Document not found.');
+  const [doc] = await db
+    .select()
+    .from(documents)
+    .where(and(eq(documents.id, documentId), eq(documents.caseId, caseId)))
+    .limit(1);
+  if (!doc) throw new UserFacingError('Document not found.');
+  return doc;
 }
 
-export async function deleteDocumentAction(caseId: string, documentId: string, storagePath: string): Promise<DeleteResult> {
-    if (!caseId || !documentId || !storagePath) {
-        return { success: false, message: "Missing required parameters for deletion."};
+export async function saveDocumentTagsAction(caseId: string, documentId: string, tags: string[]) {
+  return runAction('saveTags', async () => {
+    await requireOwnedCase(caseId);
+    await getOwnedDocument(caseId, documentId);
+    const clean = Array.from(new Set(tagsSchema.parse(tags)));
+
+    await db.update(documents).set({ tags: clean }).where(eq(documents.id, documentId));
+    revalidatePath(`/cases/${caseId}`);
+    return { success: true as const, message: 'Tags saved.' };
+  });
+}
+
+export async function deleteDocumentAction(caseId: string, documentId: string) {
+  return runAction('deleteDocument', async () => {
+    await requireOwnedCase(caseId);
+    const doc = await getOwnedDocument(caseId, documentId);
+
+    // Delete the database record first so the document disappears even if storage cleanup fails.
+    await db.delete(documents).where(eq(documents.id, documentId));
+    await deleteCaseDocument(doc.storageKey).catch((error) => {
+      console.error('[deleteDocument] storage cleanup failed', doc.storageKey, error);
+    });
+
+    revalidatePath(`/cases/${caseId}`);
+    return { success: true as const, message: 'Document deleted.' };
+  });
+}
+
+// Gemini accepts these inline; Word files are not supported for tagging.
+const AI_SUPPORTED = new Set(['application/pdf', 'image/png', 'image/jpeg']);
+
+export async function suggestDocumentTagsAction(caseId: string, documentId: string) {
+  return runAction('suggestTags', async () => {
+    await requireOwnedCase(caseId);
+    if (!env.GEMINI_API_KEY) throw new UserFacingError('AI tagging is not configured (GEMINI_API_KEY is missing).');
+    const doc = await getOwnedDocument(caseId, documentId);
+    if (!AI_SUPPORTED.has(doc.mimeType)) {
+      throw new UserFacingError('AI tagging works with PDF, JPEG and PNG files.');
     }
 
-    try {
-        // 1. Delete file from Firebase Storage
-        const fileRef = storageRef(storage, storagePath);
-        await deleteObject(fileRef);
+    const response = await fetch(signedDocumentUrl(doc.storageKey));
+    if (!response.ok) throw new Error(`Could not read document from storage (${response.status})`);
+    const base64 = Buffer.from(await response.arrayBuffer()).toString('base64');
 
-        // 2. Delete document record from Firestore
-        const docRef = doc(db, 'cases', caseId, 'documents', documentId);
-        await deleteDoc(docRef);
-
-        return { success: true, message: "Document deleted successfully." };
-    } catch (error: any) {
-        console.error("Error deleting document:", error);
-        // If Firestore deletion fails after storage deletion, there's a dangling reference.
-        // A more robust system might have retry logic or a cleanup function.
-        if (error.code === 'storage/object-not-found') {
-             // If file is already gone from storage, try to delete firestore doc anyway
-            try {
-                const docRef = doc(db, 'cases', caseId, 'documents', documentId);
-                await deleteDoc(docRef);
-                return { success: true, message: "Document record cleaned up." };
-            } catch (dbError: any) {
-                 return { success: false, message: dbError.message || "Failed to delete document record."};
-            }
-        }
-        return { success: false, message: error.message || "Failed to delete document." };
-    }
+    const result = await tagLegalDocument({
+      documentDataUri: `data:${doc.mimeType};base64,${base64}`,
+      documentDescription: doc.description || doc.name,
+    });
+    const tags = tagsSchema.parse(result.tags.map((t) => t.trim()).filter(Boolean).slice(0, 20));
+    return { success: true as const, message: `${tags.length} tags suggested.`, data: { tags } };
+  });
 }

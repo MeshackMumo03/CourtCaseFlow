@@ -1,50 +1,25 @@
-import { clsx, type ClassValue } from "clsx"
-import { Timestamp } from "firebase/firestore";
-import { twMerge } from "tailwind-merge"
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
 
 export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
+  return twMerge(clsx(inputs));
 }
 
-/**
- * Converts any Firestore Timestamps in an object to JSON strings.
- * This is useful for making Firestore data serializable for Next.js server components,
- * preventing "Maximum call stack size exceeded" errors.
- * It also handles objects that look like Timestamps (with seconds/nanoseconds).
- * @param obj The object to process.
- * @returns A new object with Timestamps converted to strings.
- */
-export function toSerializable(obj: any): any {
-  if (obj === null || obj === undefined) {
-    return obj;
-  }
+export function getInitials(name: string | null | undefined) {
+  if (!name) return 'U';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length > 1) return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+  return name.substring(0, 2).toUpperCase();
+}
 
-  // Handle Firestore Timestamp objects
-  if (obj instanceof Timestamp) {
-    return obj.toJSON();
-  }
+export function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
-  // Handle plain objects that look like Timestamps (from previous serializations)
-  if (typeof obj === 'object' && obj !== null && 'seconds' in obj && 'nanoseconds' in obj && Object.keys(obj).length === 2) {
-    return new Timestamp(obj.seconds, obj.nanoseconds).toJSON();
-  }
-
-  // Handle arrays by recursively calling toSerializable on each element
-  if (Array.isArray(obj)) {
-    return obj.map(toSerializable);
-  }
-
-  // Handle general objects by recursively calling toSerializable on their values
-  if (typeof obj === 'object') {
-    const newObj: { [key: string]: any } = {};
-    for (const key in obj) {
-      if (Object.prototype.hasOwnProperty.call(obj, key)) {
-        newObj[key] = toSerializable(obj[key]);
-      }
-    }
-    return newObj;
-  }
-
-  // Return primitives as is
-  return obj;
+/** Only allow same-site relative redirect targets (prevents open redirects via ?next=). */
+export function safeRedirectPath(value: string | null | undefined, fallback = '/dashboard') {
+  if (!value || !value.startsWith('/') || value.startsWith('//') || value.startsWith('/\\')) return fallback;
+  return value;
 }

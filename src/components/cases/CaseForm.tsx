@@ -1,193 +1,105 @@
-
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
-import * as z from 'zod';
-import { Button } from '@/components/ui/button';
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
-import { CalendarIcon, Loader2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { format } from 'date-fns';
-import { useState, useEffect } from 'react';
-import { useToast } from '@/hooks/use-toast';
+import { Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { createCaseAction, updateCaseAction } from '@/actions/cases'; 
-import type { CaseFile, UserProfile } from '@/types';
-import { useAuth } from '@/hooks/use-auth';
-import { Timestamp } from 'firebase/firestore';
+import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+
+import { createCaseAction, updateCaseAction } from '@/actions/cases';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Combobox } from '@/components/ui/combobox';
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { useToast } from '@/hooks/use-toast';
 import { courtList } from '@/lib/courts';
+import { CASE_STATUSES, type CaseFile } from '@/types';
 
-
-const caseFormSchema = z.object({
-  caseNumber: z.string().min(1, 'Case number is required'),
-  clientName: z.string().min(1, 'Client name is required'),
-  clientEmail: z.string().email('Invalid client email address'),
-  court: z.string().min(1, 'Court name is required'),
-  status: z.enum(['active', 'pending', 'archived', 'closed']),
-  description: z.string().optional(),
-  hearingDate: z.date().optional().nullable(),
+const formSchema = z.object({
+  caseNumber: z.string().trim().min(1, 'Case number is required.').max(100),
+  clientName: z.string().trim().min(1, 'Client name is required.').max(200),
+  clientEmail: z.email('Invalid client email address.'),
+  court: z.string().min(1, 'Court is required.'),
+  status: z.enum(CASE_STATUSES),
+  description: z.string().max(5000).optional(),
+  /** Value of a datetime-local input (local time, no zone), or empty. */
+  hearingLocal: z.string().optional(),
 });
+type FormValues = z.infer<typeof formSchema>;
 
-type CaseFormValues = z.infer<typeof caseFormSchema>;
-
-interface CaseFormProps {
-  initialData?: CaseFile; // For editing
-  caseId?: string;
-  clients?: Pick<UserProfile, 'uid' | 'displayName' | 'email'>[];
+/** Date -> "YYYY-MM-DDTHH:mm" in the browser's local time, for datetime-local inputs. */
+function toLocalInput(date: Date | null) {
+  if (!date) return '';
+  const d = new Date(date);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export function CaseForm({ initialData, caseId, clients = [] }: CaseFormProps) {
-  const { userProfile } = useAuth();
-  const [isLoading, setIsLoading] = useState(false);
-  const { toast } = useToast();
+interface CaseFormProps {
+  initialData?: CaseFile;
+  /** The lawyer's existing clients, offered as shortcuts when creating a case. */
+  knownClients?: { name: string; email: string }[];
+}
+
+export function CaseForm({ initialData, knownClients = [] }: CaseFormProps) {
   const router = useRouter();
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
+  const isEdit = Boolean(initialData);
 
-  const isEditMode = !!initialData;
-
-  const clientOptions = clients.map(client => ({
-    value: client.email!,
-    label: `${client.displayName} (${client.email})`
-  }));
-
-  const courtOptions = courtList.map(court => ({
-    value: court,
-    label: court,
-  }));
-  
-  const getInitialTime = () => {
-    if (initialData?.hearingDate) {
-      const date = initialData.hearingDate instanceof Timestamp 
-        ? initialData.hearingDate.toDate() 
-        : new Date(initialData.hearingDate as any);
-      return format(date, 'HH:mm');
-    }
-    return '';
-  };
-
-  const [hearingTime, setHearingTime] = useState<string>(getInitialTime());
-
-  const form = useForm<CaseFormValues>({
-    resolver: zodResolver(caseFormSchema),
-    defaultValues: initialData
-      ? {
-          ...initialData,
-          hearingDate: initialData.hearingDate instanceof Timestamp ? initialData.hearingDate.toDate() : initialData.hearingDate ? new Date(initialData.hearingDate as any) : null,
-        }
-      : {
-          caseNumber: '',
-          clientName: '',
-          clientEmail: '',
-          court: '',
-          status: 'pending',
-          description: '',
-          hearingDate: null,
-        },
+  const form = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      caseNumber: initialData?.caseNumber ?? '',
+      clientName: initialData?.clientName ?? '',
+      clientEmail: initialData?.clientEmail ?? '',
+      court: initialData?.court ?? '',
+      status: initialData?.status ?? 'pending',
+      description: initialData?.description ?? '',
+      hearingLocal: toLocalInput(initialData?.hearingDate ?? null),
+    },
   });
 
-  const handleClientSelect = (email: string) => {
-    const selectedClient = clients.find(c => c.email === email);
-    if (selectedClient) {
-        form.setValue('clientEmail', selectedClient.email || '', { shouldValidate: true });
-        form.setValue('clientName', selectedClient.displayName || '', { shouldValidate: true });
-    }
-  }
+  async function onSubmit(values: FormValues) {
+    setLoading(true);
+    const input = {
+      caseNumber: values.caseNumber,
+      clientName: values.clientName,
+      clientEmail: values.clientEmail,
+      court: values.court,
+      status: values.status,
+      description: values.description ?? '',
+      hearingDate: values.hearingLocal ? new Date(values.hearingLocal).toISOString() : '',
+    };
+    const result = initialData ? await updateCaseAction(initialData.id, input) : await createCaseAction(input);
+    setLoading(false);
 
-  const onSubmit = async (values: CaseFormValues) => {
-    if (!userProfile || userProfile.role !== 'lawyer') {
-      toast({ variant: 'destructive', title: 'Unauthorized', description: 'Only lawyers can create or update cases.' });
+    if (!result.success) {
+      toast({ variant: 'destructive', title: 'Could not save case', description: result.message });
       return;
     }
-    setIsLoading(true);
-    try {
-      const formData = new FormData();
-      
-      const combinedValues = { ...values };
-
-      if (combinedValues.hearingDate) {
-          const date = new Date(combinedValues.hearingDate);
-          if (hearingTime) {
-            const [hours, minutes] = hearingTime.split(':').map(Number);
-            date.setHours(hours, minutes);
-          }
-          combinedValues.hearingDate = date;
-      }
-
-      Object.entries(combinedValues).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          if (key === 'hearingDate' && value instanceof Date) {
-            formData.append(key, value.toISOString());
-          } else if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'){
-            formData.append(key, String(value));
-          }
-        }
-      });
-      formData.append('lawyerUid', userProfile.uid);
-      
-      let result;
-      if (caseId) {
-        formData.append('caseId', caseId);
-        result = await updateCaseAction(formData);
-        if (result.success) {
-          toast({ title: 'Case Updated', description: 'Case details have been successfully updated.' });
-          router.push(result.caseId ? `/cases/${result.caseId}` : '/dashboard');
-        } else {
-          throw new Error(result.message || 'Failed to update case.');
-        }
-      } else {
-        result = await createCaseAction(formData);
-        if (result.success) {
-          toast({ title: 'Case Created', description: 'New case has been successfully created.' });
-          router.push(result.caseId ? `/cases/${result.caseId}` : '/dashboard');
-        } else {
-          throw new Error(result.message || 'Failed to create case.');
-        }
-      }
-      router.refresh(); // Refresh server components
-    } catch (error: any) {
-      console.error('Failed to save case:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: error.message || 'Failed to save case. Please try again.',
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    toast({ title: isEdit ? 'Case updated' : 'Case created' });
+    router.push(`/cases/${result.data.caseId}`);
+  }
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{caseId ? 'Edit Case' : 'Create New Case'}</CardTitle>
+        <CardTitle>{isEdit ? 'Edit Case' : 'Create New Case'}</CardTitle>
         <CardDescription>
-          {caseId ? 'Update the details for this case.' : 'Fill in the details for the new case.'}
+          {isEdit
+            ? 'Update the details for this case.'
+            : 'The client will see this case once they sign up and verify this email address.'}
         </CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
               <FormField
                 control={form.control}
                 name="caseNumber"
@@ -195,7 +107,7 @@ export function CaseForm({ initialData, caseId, clients = [] }: CaseFormProps) {
                   <FormItem>
                     <FormLabel>Case Number</FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g., CV-2023-12345" {...field} />
+                      <Input placeholder="e.g., CV-2026-12345" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -208,103 +120,113 @@ export function CaseForm({ initialData, caseId, clients = [] }: CaseFormProps) {
                   <FormItem className="flex flex-col">
                     <FormLabel>Court</FormLabel>
                     <Combobox
-                        options={courtOptions}
-                        value={field.value}
-                        onChange={(value) => form.setValue('court', value, { shouldValidate: true })}
-                        placeholder="Select a court..."
-                        searchPlaceholder="Search for a court..."
-                        emptyPlaceholder="No court found."
+                      options={courtList.map((c) => ({ value: c, label: c }))}
+                      value={field.value}
+                      onChange={(v) => form.setValue('court', v, { shouldValidate: true })}
+                      placeholder="Select a court..."
+                      searchPlaceholder="Search for a court..."
+                      emptyPlaceholder="No court found."
                     />
                     <FormMessage />
                   </FormItem>
                 )}
               />
             </div>
-            
-            {isEditMode ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <FormField
-                  control={form.control}
-                  name="clientName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Client Name</FormLabel>
-                      <FormControl>
-                        <Input placeholder="John Doe" {...field} readOnly disabled/>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="clientEmail"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Client Email</FormLabel>
-                      <FormControl>
-                        <Input type="email" placeholder="client@example.com" {...field} readOnly disabled/>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-            ) : (
-                <FormField
-                    control={form.control}
-                    name="clientEmail"
-                    render={({ field }) => (
-                        <FormItem className="flex flex-col">
-                            <FormLabel>Select a Client</FormLabel>
-                            <Combobox
-                                options={clientOptions}
-                                value={field.value}
-                                onChange={handleClientSelect}
-                                placeholder="Select a registered client..."
-                                searchPlaceholder="Search by name or email..."
-                                emptyPlaceholder="No clients found."
-                            />
-                             <FormMessage />
-                             {/* Hidden inputs to hold the values for the form */}
-                             <FormField
-                                control={form.control}
-                                name="clientName"
-                                render={({ field: nameField }) => (
-                                    <FormControl>
-                                        <Input type="hidden" {...nameField} />
-                                    </FormControl>
-                                )}
-                            />
-                        </FormItem>
-                    )}
-                />
+
+            {!isEdit && knownClients.length > 0 && (
+              <FormItem>
+                <FormLabel>Existing client (optional)</FormLabel>
+                <Select
+                  onValueChange={(email) => {
+                    const c = knownClients.find((k) => k.email === email);
+                    if (!c) return;
+                    form.setValue('clientEmail', c.email, { shouldValidate: true });
+                    form.setValue('clientName', c.name, { shouldValidate: true });
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pick one of your clients..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {knownClients.map((c) => (
+                      <SelectItem key={c.email} value={c.email}>
+                        {c.name} ({c.email})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormItem>
             )}
 
-
-            <FormField
-              control={form.control}
-              name="status"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Status</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="clientName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Client Name</FormLabel>
                     <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select case status" />
-                      </SelectTrigger>
+                      <Input placeholder="Jane Wanjiku" {...field} disabled={isEdit} />
                     </FormControl>
-                    <SelectContent>
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="closed">Closed</SelectItem>
-                      <SelectItem value="archived">Archived</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="clientEmail"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Client Email</FormLabel>
+                    <FormControl>
+                      <Input type="email" placeholder="client@example.com" {...field} disabled={isEdit} />
+                    </FormControl>
+                    {isEdit && <FormDescription>The client on a case can&apos;t be changed.</FormDescription>}
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Status</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select case status" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {CASE_STATUSES.map((s) => (
+                          <SelectItem key={s} value={s} className="capitalize">
+                            {s.charAt(0).toUpperCase() + s.slice(1)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="hearingLocal"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Hearing Date &amp; Time (Optional)</FormLabel>
+                    <FormControl>
+                      <Input type="datetime-local" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             <FormField
               control={form.control}
@@ -313,80 +235,16 @@ export function CaseForm({ initialData, caseId, clients = [] }: CaseFormProps) {
                 <FormItem>
                   <FormLabel>Case Description (Optional)</FormLabel>
                   <FormControl>
-                    <Textarea
-                      placeholder="Brief summary of the case, key facts, objectives..."
-                      className="resize-none"
-                      rows={4}
-                      {...field}
-                    />
+                    <Textarea placeholder="Brief summary of the case, key facts, objectives..." className="resize-none" rows={4} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            
-            <FormField
-              control={form.control}
-              name="hearingDate"
-              render={({ field }) => (
-                <FormItem className="flex flex-col">
-                  <FormLabel>Hearing Date & Time (Optional)</FormLabel>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant={'outline'}
-                            className={cn(
-                              'w-full sm:w-[240px] pl-3 text-left font-normal',
-                              !field.value && 'text-muted-foreground'
-                            )}
-                          >
-                            {field.value ? (
-                              format(field.value, 'PPP')
-                            ) : (
-                              <span>Pick a date</span>
-                            )}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value || undefined}
-                          onSelect={(date) => {
-                            field.onChange(date || null)
-                            if (date && !hearingTime) {
-                                // Default to a morning time if none is set
-                                setHearingTime('09:00');
-                            }
-                            if (!date) {
-                                setHearingTime('');
-                            }
-                          }}
-                          disabled={(date) => date < new Date(new Date().setDate(new Date().getDate()-1)) } // Disable past dates
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    {field.value && (
-                       <Input
-                          type="time"
-                          className="w-full sm:w-auto"
-                          value={hearingTime}
-                          onChange={(e) => setHearingTime(e.target.value)}
-                        />
-                    )}
-                  </div>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
 
-            <Button type="submit" className="w-full md:w-auto" disabled={isLoading}>
-              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {caseId ? 'Save Changes' : 'Create Case'}
+            <Button type="submit" className="w-full md:w-auto" disabled={loading}>
+              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isEdit ? 'Save Changes' : 'Create Case'}
             </Button>
           </form>
         </Form>

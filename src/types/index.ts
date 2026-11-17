@@ -1,62 +1,59 @@
+import type { CaseStatus, Role, VerificationStatus } from '@/lib/constants';
 
-import type { Timestamp } from 'firebase/firestore';
+export { CASE_STATUSES, ROLES, VERIFICATION_STATUSES } from '@/lib/constants';
+export type { CaseStatus, Role, VerificationStatus };
 
-export interface UserProfile {
-  uid: string;
-  email: string | null;
-  displayName: string | null;
-  role: 'lawyer' | 'client';
-  createdAt: Timestamp;
-  photoURL?: string;
-  phoneNumber?: string;
-  
-  // Lawyer-specific fields
-  lawFirmName?: string;
-  lawFirmAddress?: string;
-  lskRegistrationNumber?: string;
-  lskVerificationStatus?: 'unverified' | 'pending_review' | 'verified' | 'rejected';
-  lawFirmVerificationStatus?: 'unverified' | 'pending_review' | 'verified' | 'rejected';
+export interface CaseFile {
+  id: string;
+  caseNumber: string;
+  clientName: string;
+  clientEmail: string;
+  court: string;
+  status: CaseStatus;
+  description: string | null;
+  lawyerId: string;
+  hearingDate: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
+/** Document metadata safe to send to the browser (no storage key). */
 export interface CaseDocument {
   id: string;
   name: string;
   description: string;
-  storagePath: string; // Path in Firebase Storage
-  downloadURL: string;
-  uploadedAt: Timestamp;
-  uploaderUid: string; // UID of the lawyer who uploaded
-  tags?: string[];
-  mimeType?: string;
-}
-
-export interface CaseFile {
-  id: string; // Firestore document ID
-  caseNumber: string;
-  clientName: string; // Simplified for now
-  clientEmail: string; // Simplified for now
-  // clientUid?: string; // UID of the client user, future enhancement for linking
-  court: string;
-  status: 'active' | 'archived' | 'pending' | 'closed';
-  description?: string;
-  lawyerUid: string; // UID of the lawyer managing the case
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-  hearingDate?: Timestamp | null;
-  // milestones: { // Future enhancement
-  //   initiation?: Timestamp;
-  //   hearing?: Timestamp;
-  //   submission?: Timestamp;
-  //   closure?: Timestamp;
-  // };
-  // documents: CaseDocument[]; // Storing documents as a subcollection is better
+  mimeType: string;
+  sizeBytes: number;
+  tags: string[];
+  uploadedAt: Date;
 }
 
 export interface CaseComment {
-    id: string;
-    text: string;
-    authorUid: string;
-    authorName: string;
-    authorRole: 'lawyer' | 'client';
-    createdAt: Timestamp;
+  id: string;
+  text: string;
+  createdAt: Date;
+  authorId: string;
+  authorName: string;
+  authorRole: Role;
+  authorImage: string | null;
 }
+
+/** Profile details one user may see about another (no internal fields). */
+export interface PublicProfile {
+  id: string;
+  name: string;
+  email: string;
+  image: string | null;
+  role: Role;
+  phoneNumber: string | null;
+  lawFirmName: string | null;
+  lawFirmAddress: string | null;
+  lskRegistrationNumber: string | null;
+  lskVerificationStatus: VerificationStatus;
+  lawFirmVerificationStatus: VerificationStatus;
+  createdAt: Date;
+}
+
+export type ActionResult<T = undefined> =
+  | ({ success: true; message: string } & (T extends undefined ? object : { data: T }))
+  | { success: false; message: string };

@@ -1,93 +1,61 @@
+'use client';
 
-"use client";
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Loader2, Mail } from 'lucide-react';
+import Link from 'next/link';
+import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
 
-import { zodResolver } from "@hookform/resolvers/zod";
-import { sendPasswordResetEmail } from "firebase/auth";
-import { Loader2, Mail } from "lucide-react";
-import Link from "next/link";
-import { useState } from "react";
-import { useForm } from "react-hook-form";
-import * as z from "zod";
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { authClient } from '@/lib/auth-client';
 
-import { Button } from "@/components/ui/button";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { useToast } from "@/hooks/use-toast";
-import { auth } from "@/lib/firebase";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-
-const formSchema = z.object({
-  email: z.string().email({ message: "Please enter a valid email address." }),
-});
+const formSchema = z.object({ email: z.email('Please enter a valid email address.') });
 
 export function ForgotPasswordForm() {
-  const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [emailSent, setEmailSent] = useState(false);
+  const [sent, setSent] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      email: "",
-    },
+    defaultValues: { email: '' },
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setLoading(true);
-    try {
-      await sendPasswordResetEmail(auth, values.email);
-      setEmailSent(true);
-      toast({
-        title: "Password Reset Email Sent",
-        description: `If an account exists for ${values.email}, a reset link has been sent.`,
-      });
-    } catch (error: any) {
-      console.error("Password reset error:", error);
-      // We don't want to reveal if an email exists or not for security reasons.
-      // So we show a generic success message regardless of the outcome.
-      setEmailSent(true);
-      toast({
-        title: "Password Reset Email Sent",
-        description: `If an account exists for ${values.email}, a reset link has been sent.`,
-      });
-    } finally {
-      setLoading(false);
-    }
+    // The result is ignored on purpose: we never reveal whether an account exists.
+    await authClient.requestPasswordReset({ email: values.email, redirectTo: '/reset-password' });
+    setLoading(false);
+    setSent(true);
   }
 
-  if (emailSent) {
+  if (sent) {
     return (
-       <Card className="w-full">
+      <Card className="w-full">
         <CardHeader>
-            <CardTitle className="text-2xl">Check Your Email</CardTitle>
-            <CardDescription>
-                A password reset link has been sent to the email address you provided, if it exists in our system.
-            </CardDescription>
+          <CardTitle className="text-2xl">Check Your Email</CardTitle>
+          <CardDescription>If an account exists for that address, a password reset link is on its way. It expires in 30 minutes.</CardDescription>
         </CardHeader>
         <CardContent>
-            <Mail className="w-16 h-16 mx-auto text-primary" />
+          <Mail className="mx-auto h-16 w-16 text-primary" />
         </CardContent>
         <CardFooter>
-            <Link href="/login" className="w-full">
-                <Button variant="outline" className="w-full">Back to Login</Button>
-            </Link>
+          <Button asChild variant="outline" className="w-full">
+            <Link href="/login">Back to Login</Link>
+          </Button>
         </CardFooter>
       </Card>
-    )
+    );
   }
 
   return (
     <Card className="w-full">
       <CardHeader>
         <CardTitle className="text-2xl">Forgot Password?</CardTitle>
-        <CardDescription>No problem. Enter your email and we'll send you a reset link.</CardDescription>
+        <CardDescription>Enter your email and we&apos;ll send you a reset link.</CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
@@ -99,7 +67,7 @@ export function ForgotPasswordForm() {
                 <FormItem>
                   <FormLabel>Email</FormLabel>
                   <FormControl>
-                    <Input placeholder="name@example.com" {...field} />
+                    <Input type="email" autoComplete="email" placeholder="name@example.com" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -111,12 +79,12 @@ export function ForgotPasswordForm() {
             </Button>
           </form>
         </Form>
-        </CardContent>
-        <CardFooter>
-            <Link href="/login" className="text-sm text-muted-foreground hover:text-primary">
-                Remembered your password? Login
-            </Link>
-        </CardFooter>
+      </CardContent>
+      <CardFooter>
+        <Link href="/login" className="text-sm text-muted-foreground hover:text-primary">
+          Remembered your password? Login
+        </Link>
+      </CardFooter>
     </Card>
   );
 }

@@ -1,45 +1,38 @@
-
 'use server';
 
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import type { UserProfile } from '@/types';
+import { and, eq } from 'drizzle-orm';
+import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
+import { db } from '@/db';
+import { user } from '@/db/schema';
+import { runAction, UserFacingError } from '@/server/action-utils';
+import { requireUser } from '@/server/session';
 
-interface ActionResult {
-  success: boolean;
-  message: string;
-}
+const inputSchema = z.object({
+  userId: z.string().min(1),
+  verificationType: z.enum(['lsk', 'lawFirm']),
+  newStatus: z.enum(['verified', 'rejected']),
+});
 
-// In a real application, you would add robust authentication and authorization
-// to ensure only legitimate administrators can call this action.
-// For this prototype, we are keeping it simple.
+export async function updateUserVerificationStatusAction(input: z.infer<typeof inputSchema>) {
+  return runAction('updateVerification', async () => {
+    await requireUser(['admin']);
+    const { userId, verificationType, newStatus } = inputSchema.parse(input);
 
-export async function updateUserVerificationStatusAction(
-  userId: string,
-  verificationType: 'lsk' | 'lawFirm',
-  newStatus: 'verified' | 'rejected' | 'pending_review' | 'unverified'
-): Promise<ActionResult> {
-  if (!userId || !verificationType || !newStatus) {
-    return { success: false, message: 'Missing required parameters.' };
-  }
+    const set =
+      verificationType === 'lsk'
+        ? { lskVerificationStatus: newStatus, updatedAt: new Date() }
+        : { lawFirmVerificationStatus: newStatus, updatedAt: new Date() };
 
-  try {
-    const userDocRef = doc(db, 'users', userId);
-    const updates: Partial<UserProfile> = {};
+    const updated = await db
+      .update(user)
+      .set(set)
+      .where(and(eq(user.id, userId), eq(user.role, 'lawyer')))
+      .returning({ id: user.id });
 
-    if (verificationType === 'lsk') {
-      updates.lskVerificationStatus = newStatus;
-    } else if (verificationType === 'lawFirm') {
-      updates.lawFirmVerificationStatus = newStatus;
-    } else {
-      return { success: false, message: 'Invalid verification type.' };
-    }
-
-    await updateDoc(userDocRef, updates);
-
-    return { success: true, message: `User ${verificationType} status updated to ${newStatus}.` };
-  } catch (error: any) {
-    console.error('Error updating user verification status:', error);
-    return { success: false, message: error.message || 'Failed to update verification status.' };
-  }
+    if (updated.length === 0) throw new UserFacingError('Lawyer not found.');
+    revalidatePath('/admin/verifications');
+    const label = verificationType === 'lsk' ? 'LSK' : 'Law firm';
+    return { success: true as const, message: `${label} status set to ${newStatus}.` };
+  });
 }

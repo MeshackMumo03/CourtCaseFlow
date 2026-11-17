@@ -1,226 +1,73 @@
+import { Briefcase, CalendarDays, FileText, PlusCircle, ShieldQuestion, UserCheck, UserCog, Users } from 'lucide-react';
+import Link from 'next/link';
 
-"use client";
+import { CaseStatusBadge } from '@/components/common/badges';
+import { LocalTime } from '@/components/common/LocalTime';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { getAdminStats } from '@/server/admin';
+import { countDocumentsForUser, listCasesForUser } from '@/server/cases';
+import { requirePageUser } from '@/server/session';
 
-import { useAuth } from "@/hooks/use-auth";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { PlusCircle, Briefcase, Eye, Loader2, Users, UserCheck, ShieldQuestion, UserCog, Building, UserCircle2 } from "lucide-react";
-import Link from "next/link";
-import { useEffect, useState, useCallback } from "react";
-import { collection, query, where, getDocs, Timestamp, orderBy } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import type { CaseFile, UserProfile } from '@/types';
-import Image from "next/image";
-import { toSerializable } from "@/lib/utils";
-
-const ADMIN_EMAIL = 'admin@caselink.com';
-
-// A helper function to safely create a Date object
-const safeNewDate = (date: any): Date | null => {
-    if (!date) return null;
-    if (date instanceof Date) return date;
-    if (typeof date === 'string' || typeof date === 'number') {
-        const d = new Date(date);
-        if (!isNaN(d.getTime())) {
-            return d;
-        }
-    }
-    // Handle Firestore Timestamp-like objects that might come from toSerializable
-    if (typeof date === 'object' && date.seconds) {
-        const d = new Timestamp(date.seconds, date.nanoseconds).toDate();
-         if (!isNaN(d.getTime())) {
-            return d;
-        }
-    }
-    return null;
+function StatCard({ title, value, hint, icon: Icon }: { title: string; value: number; hint: string; icon: React.ElementType }) {
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-medium">{title}</CardTitle>
+        <Icon className="h-5 w-5 text-muted-foreground" />
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold">{value}</div>
+        <p className="text-xs text-muted-foreground">{hint}</p>
+      </CardContent>
+    </Card>
+  );
 }
 
+export default async function DashboardPage() {
+  const user = await requirePageUser();
 
-export default function DashboardPage() {
-  const { userProfile, loading } = useAuth();
-  const [dashboardData, setDashboardData] = useState<any>({ cases: [], stats: { activeCases: 0, upcomingHearings: 0, totalDocuments: 0 } });
-  const [dataLoading, setDataLoading] = useState(true);
-
-  const isAdmin = userProfile?.email === ADMIN_EMAIL;
-
-  const fetchLawyerClientData = useCallback(async () => {
-    if (!userProfile) return;
-    setDataLoading(true);
-    try {
-      let q;
-      // Fetch cases without server-side ordering to prevent index errors
-      if (userProfile.role === 'lawyer') {
-        q = query(collection(db, 'cases'), where('lawyerUid', '==', userProfile.uid));
-      } else { // client
-        q = query(collection(db, 'cases'), where('clientEmail', '==', userProfile.email));
-      }
-      const querySnapshot = await getDocs(q);
-      
-      // Manually sort the cases by creation date (newest first)
-      const cases: CaseFile[] = querySnapshot.docs.map(doc => toSerializable({ id: doc.id, ...doc.data() }) as CaseFile)
-        .sort((a, b) => {
-            const timeA = safeNewDate(a.createdAt)?.getTime() || 0;
-            const timeB = safeNewDate(b.createdAt)?.getTime() || 0;
-            return timeB - timeA;
-        });
-
-      
-      const activeCases = cases.filter(c => c.status === 'active').length;
-      const upcomingHearings = cases.filter(c => {
-          const hearingDate = safeNewDate(c.hearingDate);
-          return hearingDate && hearingDate > new Date();
-      }).length;
-      
-      const totalDocuments = cases.length * 2; // Simulated average
-
-      setDashboardData({
-        cases: cases.slice(0, 5),
-        stats: { activeCases, upcomingHearings, totalDocuments }
-      });
-    } catch (error) {
-      console.error("Error fetching dashboard data:", error);
-      setDashboardData({ cases: [], stats: { activeCases: 0, upcomingHearings: 0, totalDocuments: 0 } });
-    } finally {
-      setDataLoading(false);
-    }
-  }, [userProfile]);
-
-  const fetchAdminData = useCallback(async () => {
-    setDataLoading(true);
-    try {
-      const usersSnapshot = await getDocs(collection(db, 'users'));
-      const allUsers = usersSnapshot.docs.map(doc => toSerializable(doc.data()) as UserProfile);
-      
-      const totalUsers = allUsers.length;
-      const totalLawyers = allUsers.filter(u => u.role === 'lawyer').length;
-      const totalClients = allUsers.filter(u => u.role === 'client').length;
-      
-      const pendingLawyers = allUsers.filter(u => u.role === 'lawyer' && (u.lskVerificationStatus === 'pending_review' || u.lawFirmVerificationStatus === 'pending_review')).length;
-      
-      const casesSnapshot = await getDocs(collection(db, 'cases'));
-      const totalCases = casesSnapshot.size;
-
-      setDashboardData({
-        stats: { totalUsers, totalLawyers, totalClients, pendingVerifications: pendingLawyers, totalCases: totalCases }
-      });
-
-    } catch (error) {
-      console.error("Error fetching admin data:", error);
-      setDashboardData({ stats: { totalUsers: 0, totalLawyers: 0, totalClients: 0, pendingVerifications: 0, totalCases: 0 } });
-    } finally {
-      setDataLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!loading && userProfile) {
-      if (isAdmin) {
-        fetchAdminData();
-      } else {
-        fetchLawyerClientData();
-      }
-    }
-  }, [userProfile, loading, isAdmin, fetchAdminData, fetchLawyerClientData]);
-
-  if (loading || dataLoading) {
-    return (
-      <div className="flex flex-1 items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-         <span className="ml-2">Loading Dashboard...</span>
-      </div>
-    );
-  }
-
-  if (!userProfile) {
-    return (
-      <div className="flex flex-1 items-center justify-center">
-        <p>User profile not found. Please try logging in again.</p>
-      </div>
-    );
-  }
-  
-  // ADMIN DASHBOARD VIEW
-  if (isAdmin) {
-    const { stats } = dashboardData;
+  if (user.role === 'admin') {
+    const stats = await getAdminStats();
     return (
       <div className="flex-1 space-y-6">
         <div className="flex items-center justify-between">
-            <h1 className="text-3xl font-bold tracking-tight">Admin Dashboard</h1>
-            <UserCog className="h-8 w-8 text-primary" />
+          <h1 className="text-3xl font-bold tracking-tight">Admin Dashboard</h1>
+          <UserCog className="h-8 w-8 text-primary" />
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <StatCard title="Pending Verifications" value={stats.pending} hint="Lawyers awaiting approval" icon={ShieldQuestion} />
+          <StatCard title="Total Users" value={stats.total} hint={`${stats.lawyers} lawyers, ${stats.clients} clients`} icon={Users} />
+          <StatCard title="Total Cases" value={stats.totalCases} hint="Cases created on the platform" icon={Briefcase} />
         </div>
         <Card>
           <CardHeader>
-            <CardTitle>Welcome, Admin!</CardTitle>
-            <CardDescription>
-              Here's a high-level overview of the CourtCaseFlow platform.
-            </CardDescription>
+            <CardTitle>Quick Actions</CardTitle>
           </CardHeader>
-        </Card>
-
-        {/* Admin Stats */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Pending Verifications</CardTitle>
-              <ShieldQuestion className="h-5 w-5 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.pendingVerifications}</div>
-              <p className="text-xs text-muted-foreground">Lawyers awaiting approval</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Users</CardTitle>
-              <Users className="h-5 w-5 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.totalUsers}</div>
-              <p className="text-xs text-muted-foreground">{stats.totalLawyers} Lawyers, {stats.totalClients} Clients</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Cases</CardTitle>
-              <Briefcase className="h-5 w-5 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.totalCases}</div>
-              <p className="text-xs text-muted-foreground">Cases created on the platform</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Admin Quick Actions */}
-        <Card>
-            <CardHeader>
-                <CardTitle>Quick Actions</CardTitle>
-                <CardDescription>Navigate to key administrative areas.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <Button asChild>
-                    <Link href="/admin/verifications">
-                        <UserCheck className="mr-2 h-5 w-5" /> Review Pending Verifications
-                    </Link>
-                </Button>
-            </CardContent>
+          <CardContent>
+            <Button asChild>
+              <Link href="/admin/verifications">
+                <UserCheck className="mr-2 h-5 w-5" /> Review Pending Verifications
+              </Link>
+            </Button>
+          </CardContent>
         </Card>
       </div>
     );
   }
 
-  // LAWYER & CLIENT DASHBOARD VIEW
-  const { cases, stats } = dashboardData;
-  const upcomingHearings = cases.filter((c: CaseFile) => {
-      const hearingDate = safeNewDate(c.hearingDate);
-      return hearingDate && hearingDate > new Date();
-  });
+  const [cases, totalDocuments] = await Promise.all([listCasesForUser(user), countDocumentsForUser(user)]);
+  const now = new Date();
+  const activeCases = cases.filter((c) => c.status === 'active').length;
+  const upcomingHearings = cases.filter((c) => c.hearingDate && c.hearingDate > now).length;
+  const recent = cases.slice(0, 5);
+  const isLawyer = user.role === 'lawyer';
 
   return (
     <div className="flex-1 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        {userProfile.role === "lawyer" && (
+        {isLawyer && (
           <Button asChild>
             <Link href="/cases/create">
               <PlusCircle className="mr-2 h-5 w-5" /> Create New Case
@@ -231,85 +78,57 @@ export default function DashboardPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Welcome, {userProfile.displayName}!</CardTitle>
+          <CardTitle>Welcome, {user.name}!</CardTitle>
           <CardDescription>
-            {userProfile.role === "lawyer"
-              ? "Manage your cases, documents, and hearings efficiently."
-              : "View your assigned cases and track their progress."}
+            {isLawyer ? 'Manage your cases, documents, and hearings.' : 'View your cases and track their progress.'}
           </CardDescription>
         </CardHeader>
+        {!isLawyer && !user.emailVerified && (
+          <CardContent className="text-sm text-destructive">Verify your email address to see cases your lawyer has opened for you.</CardContent>
+        )}
       </Card>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Cases</CardTitle>
-            <Briefcase className="h-5 w-5 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.activeCases}</div>
-            <p className="text-xs text-muted-foreground">
-              Currently managed active cases
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Upcoming Hearings</CardTitle>
-            <Eye className="h-5 w-5 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-             <div className="text-2xl font-bold">{upcomingHearings.length}</div>
-            <p className="text-xs text-muted-foreground">
-              Cases with a scheduled hearing date
-            </p>
-          </CardContent>
-        </Card>
-         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Documents</CardTitle>
-            <Briefcase className="h-5 w-5 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-             <div className="text-2xl font-bold">{stats.totalDocuments}</div>
-            <p className="text-xs text-muted-foreground">
-              Uploaded across all your cases
-            </p>
-          </CardContent>
-        </Card>
+        <StatCard title="Active Cases" value={activeCases} hint="Cases currently active" icon={Briefcase} />
+        <StatCard title="Upcoming Hearings" value={upcomingHearings} hint="Cases with a future hearing date" icon={CalendarDays} />
+        <StatCard title="Documents" value={totalDocuments} hint="Uploaded across your cases" icon={FileText} />
       </div>
-      
+
       <Card>
         <CardHeader>
-          <CardTitle>{userProfile.role === "lawyer" ? "Recent Cases" : "Your Cases"}</CardTitle>
-          <CardDescription>A quick overview of your most recently updated cases.</CardDescription>
+          <CardTitle>{isLawyer ? 'Recent Cases' : 'Your Cases'}</CardTitle>
         </CardHeader>
         <CardContent>
-          {cases.length > 0 ? (
+          {recent.length > 0 ? (
             <ul className="space-y-3">
-              {cases.map((caseItem: CaseFile) => {
-                const hearingDate = safeNewDate(caseItem.hearingDate);
-                return (
-                  <li key={caseItem.id} className="flex items-center justify-between p-3 rounded-md border hover:bg-accent/50">
-                    <div>
-                      <p className="font-semibold">{caseItem.caseNumber} - {caseItem.clientName}</p>
-                      <p className="text-sm text-muted-foreground">Status: <span className="capitalize">{caseItem.status}</span></p>
-                      {hearingDate && <p className="text-sm text-muted-foreground">Next Hearing: {hearingDate.toLocaleDateString()}</p>}
-                    </div>
-                    <Button variant="outline" size="sm" asChild>
-                      <Link href={`/cases/${caseItem.id}`}>View</Link>
-                    </Button>
-                  </li>
-                )
-              })}
+              {recent.map((c) => (
+                <li key={c.id} className="flex items-center justify-between rounded-md border p-3 hover:bg-accent/50">
+                  <div>
+                    <p className="font-semibold">
+                      {c.caseNumber} - {c.clientName}
+                    </p>
+                    <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                      Status: <CaseStatusBadge status={c.status} />
+                    </p>
+                    {c.hearingDate && (
+                      <p className="text-sm text-muted-foreground">
+                        Next hearing: <LocalTime value={c.hearingDate} />
+                      </p>
+                    )}
+                  </div>
+                  <Button variant="outline" size="sm" asChild>
+                    <Link href={`/cases/${c.id}`}>View</Link>
+                  </Button>
+                </li>
+              ))}
             </ul>
           ) : (
-            <div className="text-center py-10">
-              <Image src="https://placehold.co/300x200.png" alt="No cases illustration" width={300} height={200} className="mx-auto mb-4 rounded-md" data-ai-hint="empty state document"/>
+            <div className="py-10 text-center">
+              <Briefcase className="mx-auto mb-4 h-16 w-16 text-muted-foreground" />
               <p className="text-muted-foreground">
-                {userProfile.role === "lawyer" ? "You haven't created any cases yet." : "No cases have been assigned to you yet."}
+                {isLawyer ? "You haven't created any cases yet." : 'No cases have been opened for you yet.'}
               </p>
-              {userProfile.role === "lawyer" && (
+              {isLawyer && (
                 <Button asChild className="mt-4">
                   <Link href="/cases/create">Create Your First Case</Link>
                 </Button>
@@ -321,4 +140,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-

@@ -1,92 +1,61 @@
 'use server';
 
-import { addDoc, collection, serverTimestamp, Timestamp, doc, updateDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import type { CaseFile } from '@/types';
+import { and, eq } from 'drizzle-orm';
+import { revalidatePath } from 'next/cache';
+import { db } from '@/db';
+import { cases } from '@/db/schema';
+import { runAction, UserFacingError } from '@/server/action-utils';
+import { isUuid } from '@/server/cases';
+import { requireUser } from '@/server/session';
+import { caseSchema, type CaseInput } from '@/lib/validation';
 
-interface ActionResult {
-  success: boolean;
-  message: string;
-  caseId?: string;
+export async function createCaseAction(input: CaseInput) {
+  return runAction('createCase', async () => {
+    const me = await requireUser(['lawyer']);
+    const data = caseSchema.parse(input);
+
+    const [created] = await db
+      .insert(cases)
+      .values({
+        caseNumber: data.caseNumber,
+        clientName: data.clientName,
+        clientEmail: data.clientEmail,
+        court: data.court,
+        status: data.status,
+        description: data.description || null,
+        hearingDate: data.hearingDate ? new Date(data.hearingDate) : null,
+        lawyerId: me.id,
+      })
+      .returning({ id: cases.id });
+
+    revalidatePath('/', 'layout');
+    return { success: true as const, message: 'Case created.', data: { caseId: created.id } };
+  });
 }
 
-export async function createCaseAction(formData: FormData): Promise<ActionResult> {
-  try {
-    const lawyerUid = formData.get('lawyerUid') as string;
-    if (!lawyerUid) {
-      return { success: false, message: 'Lawyer UID is missing. User might not be authenticated properly.' };
-    }
+export async function updateCaseAction(caseId: string, input: CaseInput) {
+  return runAction('updateCase', async () => {
+    const me = await requireUser(['lawyer']);
+    if (!isUuid(caseId)) throw new UserFacingError('Case not found.');
+    const data = caseSchema.parse(input);
 
-    const newCase: Omit<CaseFile, 'id' | 'createdAt' | 'updatedAt' | 'documents'> = {
-      caseNumber: formData.get('caseNumber') as string,
-      clientName: formData.get('clientName') as string,
-      clientEmail: formData.get('clientEmail') as string,
-      court: formData.get('court') as string,
-      status: formData.get('status') as 'active' | 'pending' | 'archived' | 'closed',
-      description: formData.get('description') as string || undefined,
-      lawyerUid: lawyerUid,
-      hearingDate: formData.has('hearingDate') ? Timestamp.fromDate(new Date(formData.get('hearingDate') as string)) : null,
-    };
+    // The client on a case is fixed once it's created, so a case can't be handed to someone else's account.
+    // Ownership is enforced in the WHERE clause, so another lawyer's case can never be changed.
+    const updated = await db
+      .update(cases)
+      .set({
+        caseNumber: data.caseNumber,
+        court: data.court,
+        status: data.status,
+        description: data.description || null,
+        hearingDate: data.hearingDate ? new Date(data.hearingDate) : null,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(cases.id, caseId), eq(cases.lawyerId, me.id)))
+      .returning({ id: cases.id });
 
-    // Validate required fields
-    if (!newCase.caseNumber || !newCase.clientName || !newCase.clientEmail || !newCase.court || !newCase.status) {
-        return { success: false, message: "Missing required case fields." };
-    }
-    
-    const caseWithTimestamps = {
-      ...newCase,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    };
-
-    const docRef = await addDoc(collection(db, 'cases'), caseWithTimestamps);
-    return { success: true, message: 'Case created successfully.', caseId: docRef.id };
-
-  } catch (error: any) {
-    console.error('Error creating case:', error);
-    return { success: false, message: error.message || 'Failed to create case.' };
-  }
+    if (updated.length === 0) throw new UserFacingError('Case not found.');
+    revalidatePath('/', 'layout');
+    return { success: true as const, message: 'Case updated.', data: { caseId } };
+  });
 }
-
-export async function updateCaseAction(formData: FormData): Promise<ActionResult> {
-  try {
-    const caseId = formData.get('caseId') as string;
-    if (!caseId) {
-      return { success: false, message: 'Case ID is missing.' };
-    }
-    
-    const lawyerUid = formData.get('lawyerUid') as string;
-    if (!lawyerUid) {
-      return { success: false, message: 'Lawyer UID is missing. User might not be authenticated properly.' };
-    }
-
-    // Construct the update object, only including fields that are present in formData
-    const updates: Partial<CaseFile> = { lawyerUid }; // Ensure lawyerUid is part of updates for ownership check if needed
-    if (formData.has('caseNumber')) updates.caseNumber = formData.get('caseNumber') as string;
-    if (formData.has('clientName')) updates.clientName = formData.get('clientName') as string;
-    if (formData.has('clientEmail')) updates.clientEmail = formData.get('clientEmail') as string;
-    if (formData.has('court')) updates.court = formData.get('court') as string;
-    if (formData.has('status')) updates.status = formData.get('status') as 'active' | 'pending' | 'archived' | 'closed';
-    if (formData.has('description')) updates.description = formData.get('description') as string;
-    
-    if (formData.has('hearingDate')) {
-      const hearingDateStr = formData.get('hearingDate') as string;
-      updates.hearingDate = hearingDateStr ? Timestamp.fromDate(new Date(hearingDateStr)) : null;
-    } else {
-        // If hearingDate is intentionally cleared
-        updates.hearingDate = null;
-    }
-    
-    updates.updatedAt = serverTimestamp() as Timestamp;
-
-    const caseDocRef = doc(db, 'cases', caseId);
-    await updateDoc(caseDocRef, updates);
-
-    return { success: true, message: 'Case updated successfully.', caseId };
-  } catch (error: any) {
-    console.error('Error updating case:', error);
-    return { success: false, message: error.message || 'Failed to update case.' };
-  }
-}
-
-// TODO: Add actions for fetching cases (with pagination, filtering, sorting), deleting/archiving cases.

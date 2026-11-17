@@ -1,93 +1,18 @@
-
-'use client';
-
-import { useEffect, useState } from 'react';
-import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import type { CaseFile } from '@/types';
-import { useAuth } from '@/hooks/use-auth';
-import { useRouter } from 'next/navigation';
+import { Briefcase, Eye, PlusCircle } from 'lucide-react';
 import Link from 'next/link';
+
+import { CaseStatusBadge } from '@/components/common/badges';
+import { LocalTime } from '@/components/common/LocalTime';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Eye, PlusCircle, Loader2, AlertTriangle } from 'lucide-react';
-import Image from 'next/image';
+import { listCasesForUser } from '@/server/cases';
+import { requirePageUser } from '@/server/session';
 
-export default function AllCasesPage() {
-  const { userProfile, loading: authLoading } = useAuth();
-  const router = useRouter();
-  const [cases, setCases] = useState<CaseFile[]>([]);
-  const [loadingCases, setLoadingCases] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export default async function AllCasesPage() {
+  const user = await requirePageUser(['lawyer']);
+  const cases = await listCasesForUser(user);
 
-  useEffect(() => {
-    if (authLoading) return;
-
-    if (!userProfile) {
-      router.replace('/login');
-      return;
-    }
-    if (userProfile.role !== 'lawyer') {
-      setError('Access Denied: You do not have permission to view this page.');
-      // Or redirect to dashboard: router.replace('/dashboard');
-      setLoadingCases(false);
-      return;
-    }
-
-    const fetchCases = async () => {
-      if (!userProfile) return;
-      setLoadingCases(true);
-      setError(null);
-      try {
-        const casesRef = collection(db, 'cases');
-        const q = query(casesRef, where('lawyerUid', '==', userProfile.uid));
-        const querySnapshot = await getDocs(q);
-        const fetchedCases: CaseFile[] = [];
-        querySnapshot.forEach((doc) => {
-          fetchedCases.push({ id: doc.id, ...doc.data() } as CaseFile);
-        });
-        
-        // Sort by newest first, with a check for missing timestamps
-        const sortedCases = fetchedCases.sort((a, b) => {
-          const timeA = a.createdAt?.toMillis() || 0;
-          const timeB = b.createdAt?.toMillis() || 0;
-          return timeB - timeA;
-        });
-        setCases(sortedCases);
-      } catch (err) {
-        console.error('Error fetching cases:', err);
-        setError('Failed to load cases.');
-      } finally {
-        setLoadingCases(false);
-      }
-    };
-
-    fetchCases();
-  }, [userProfile, authLoading, router]);
-
-  if (authLoading || loadingCases) {
-    return (
-      <div className="flex flex-1 items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center text-center">
-        <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
-        <h2 className="text-2xl font-semibold mb-2">Error</h2>
-        <p className="text-muted-foreground mb-6">{error}</p>
-        <Button onClick={() => router.push('/dashboard')}>
-          Go to Dashboard
-        </Button>
-      </div>
-    );
-  }
-  
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -102,13 +27,13 @@ export default function AllCasesPage() {
       <Card>
         <CardHeader>
           <CardTitle>Your Cases</CardTitle>
-          <CardDescription>Manage all cases assigned to you.</CardDescription>
+          <CardDescription>All cases you manage.</CardDescription>
         </CardHeader>
         <CardContent>
           {cases.length === 0 ? (
-             <div className="text-center py-10">
-              <Image src="https://placehold.co/300x200.png" alt="No cases illustration" width={300} height={200} className="mx-auto mb-4 rounded-md" data-ai-hint="empty state legal"/>
-              <p className="text-muted-foreground">You haven&apos;t created or been assigned any cases yet.</p>
+            <div className="py-10 text-center">
+              <Briefcase className="mx-auto mb-4 h-16 w-16 text-muted-foreground" />
+              <p className="text-muted-foreground">You haven&apos;t created any cases yet.</p>
               <Button asChild className="mt-4">
                 <Link href="/cases/create">Create Your First Case</Link>
               </Button>
@@ -126,22 +51,18 @@ export default function AllCasesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {cases.map((caseItem) => (
-                  <TableRow key={caseItem.id}>
-                    <TableCell className="font-medium">{caseItem.caseNumber}</TableCell>
-                    <TableCell>{caseItem.clientName}</TableCell>
+                {cases.map((c) => (
+                  <TableRow key={c.id}>
+                    <TableCell className="font-medium">{c.caseNumber}</TableCell>
+                    <TableCell>{c.clientName}</TableCell>
                     <TableCell>
-                      <Badge variant={caseItem.status === 'active' ? 'default' : 'secondary'} className="capitalize">
-                        {caseItem.status}
-                      </Badge>
+                      <CaseStatusBadge status={c.status} />
                     </TableCell>
-                    <TableCell>{caseItem.court}</TableCell>
-                    <TableCell>
-                      {caseItem.hearingDate instanceof Timestamp ? caseItem.hearingDate.toDate().toLocaleDateString() : caseItem.hearingDate ? new Date(caseItem.hearingDate as any).toLocaleDateString() : 'N/A'}
-                    </TableCell>
+                    <TableCell>{c.court}</TableCell>
+                    <TableCell>{c.hearingDate ? <LocalTime value={c.hearingDate} /> : 'N/A'}</TableCell>
                     <TableCell className="text-right">
                       <Button variant="outline" size="sm" asChild>
-                        <Link href={`/cases/${caseItem.id}`}>
+                        <Link href={`/cases/${c.id}`}>
                           <Eye className="mr-2 h-4 w-4" /> View
                         </Link>
                       </Button>
