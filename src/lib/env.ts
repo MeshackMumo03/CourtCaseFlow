@@ -26,7 +26,26 @@ const schema = z.object({
   MAIL_FROM: z.string().optional(),
 });
 
-const parsed = schema.safeParse(process.env);
+/**
+ * `next build` loads every route module to collect page config, but never serves a
+ * request, so secrets aren't needed then. During the build only, missing values are
+ * filled with inert placeholders. At runtime a missing variable still fails loudly.
+ */
+const BUILD_PLACEHOLDERS = {
+  DATABASE_URL: 'postgresql://build:build@build.invalid/build',
+  BETTER_AUTH_SECRET: 'build-time-placeholder-not-used-at-runtime',
+  BETTER_AUTH_URL: 'http://build.invalid',
+  CLOUDINARY_CLOUD_NAME: 'build-placeholder',
+  CLOUDINARY_API_KEY: 'build-placeholder',
+  CLOUDINARY_API_SECRET: 'build-placeholder',
+};
+
+const isBuild = process.env.NEXT_PHASE === 'phase-production-build';
+const source = isBuild
+  ? { ...BUILD_PLACEHOLDERS, ...Object.fromEntries(Object.entries(process.env).filter(([, v]) => v)) }
+  : process.env;
+
+const parsed = schema.safeParse(source);
 
 if (!parsed.success) {
   const issues = parsed.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`).join('\n');
